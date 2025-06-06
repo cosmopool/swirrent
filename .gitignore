@@ -1,0 +1,7 @@
+.cache/
+build/
+include/
+*.elf
+*.nacp
+*.nro
+compile_commands.json
