@@ -11,6 +11,9 @@ void tearDown(void) {
   // arena_reset(&default_arena);
 }
 
+// ----------------------------------------------------------------------
+// INTEGER TESTS
+// ----------------------------------------------------------------------
 void test_integer_parsing_should_succeed(void) {
   i32 result = bencode_decode(&default_arena, "i-11e", 5);
   TEST_ASSERT_EQUAL_INT32(0, result);

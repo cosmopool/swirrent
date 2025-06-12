@@ -8,31 +8,32 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum : u8 { INT, STRING, LIST, DICT } BencodeValueType;
+typedef enum : u8 {
+  BENCODE_TYPE_INT,
+  BENCODE_TYPE_STRING,
+  BENCODE_TYPE_LIST,
+  BENCODE_TYPE_DICT,
+  BENCODE_TYPE_NONE
+} BencodeValueType;
 
 typedef struct {
   BencodeValueType type;
   void *value;
 } BencodeValue;
 
-bool is_int(char c) {
-  return c == 'i';
-}
+BencodeValueType parseBencodeValueType(char c) {
+  switch (c) {
+  case 'i':
+    return BENCODE_TYPE_INT;
+  case 'l':
+    return BENCODE_TYPE_LIST;
+  case 'd':
+    return BENCODE_TYPE_DICT;
+  case '0' ... '9':
+    return BENCODE_TYPE_STRING;
+  };
 
-bool is_string(char c) {
-  return c == 's';
-}
-
-bool is_list(char c) {
-  return c == 'l';
-}
-
-bool is_dict(char c) {
-  return c == 'd';
-}
-
-bool is_end(char c) {
-  return c == 'e';
+  return BENCODE_TYPE_NONE;
 }
 
 i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
@@ -42,8 +43,8 @@ i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
     return 0;
   }
 
-  u8 character = bencode[0];
-  if (is_int(character)) {
+  switch (parseBencodeValueType(bencode[0])) {
+  case BENCODE_TYPE_INT: {
     if (len < 3) {
       char *msg = "[BAD INTEGER] Not enough information to decode: %*s\n";
       fprintf(stderr, msg, 5, bencode);
@@ -67,12 +68,38 @@ i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
     }
 
     printf("%ld\n", integer);
-    bencode_decode(arena, &bencode[end_idx + 1], len - end_idx);
-  } else {
-    for (usize i = 0; i < len; i++) {
-      if (bencode[i] == 'e') return 0;
+    return bencode_decode(arena, &bencode[end_idx + 1], len - end_idx);
+  }
+
+  case BENCODE_TYPE_STRING: {
+    char *colon_ptr = strchr(&bencode[1], ':');
+    if (!colon_ptr) {
+      char *msg = "[BAD INTEGER] Did not find ':' in string: %*s...\n";
+      fprintf(stderr, msg, 5, bencode);
+      return -1;
     }
+
+    isize colon_idx = colon_ptr - bencode;
+    isize integer = strtol(&bencode[1], NULL, 10);
+    if (errno) {
+      char *msg = "[BAD STRING] Not able to decode string lenght: %*s\n";
+      fprintf(stderr, msg, colon_idx, bencode);
+      return -1;
+    }
+  }
+
+  case BENCODE_TYPE_LIST: {
+    return -1;
+  }
+
+  case BENCODE_TYPE_DICT: {
+    return -1;
+  }
+
+  case BENCODE_TYPE_NONE:
+    break;
   };
 
-  return 0;
+  fprintf(stderr, "[BAD STRING] Bad bencoded string: %s\n", bencode);
+  return -1;
 }
