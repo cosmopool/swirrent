@@ -1,0 +1,4 @@
+AllowShortFunctionsOnASingleLine: None
+AllowShortLoopsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: true
+BreakStringLiterals: false
