@@ -1,41 +1,25 @@
-#if defined __x86_64__ && !defined __ILP32__
-#define __WORDSIZE 64
-#else
-#define __WORDSIZE 32
-#endif
+#include <stdint.h>
 
-typedef signed char i8;
-typedef unsigned char u8;
-typedef signed short int i16;
-typedef unsigned short int u16;
-typedef signed int i32;
-typedef unsigned int u32;
-#if __WORDSIZE == 64
-typedef signed long int i64;
-typedef unsigned long int u64;
-#else
-__extension__ typedef signed long long int i64;
-__extension__ typedef unsigned long long int u64;
-#endif
-
-/* Types for `void *' pointers.  */
-#if __WORDSIZE == 64
+typedef int8_t i8;
+typedef uint8_t u8;
+typedef int16_t i16;
+typedef uint16_t u16;
+typedef int32_t i32;
+typedef uint32_t u32;
+typedef int64_t i64;
+typedef uint64_t u64;
 /// Size of a signed pointer
-typedef long int isize;
+typedef intptr_t isize;
 /// Size of a unsigned pointer
-typedef unsigned long int usize;
-#else
-/// Size of a signed pointer
-typedef int isize;
-/// Size of a unsigned pointer
-typedef unsigned int usize;
-#endif
+typedef uintptr_t usize;
 
 typedef float f32;
 typedef double f64;
-typedef long double f80;
 
 typedef struct {
-  u32 len;
-  u8 *head;
+  usize len;
+  const u8 *str;
 } String;
+
+String stringNew(usize len, const u8 *str);
+String stringNewC(const char *str);

@@ -1,0 +1,77 @@
+#---------------------------------------------------------------------------------
+# Test Makefile for Unity tests (runs on host system)
+#---------------------------------------------------------------------------------
+
+# Directories
+UNITY_DIR := include
+SRC_DIR := src
+TEST_DIR := test
+BUILD_DIR := build_test
+
+# Compiler for host system (not Switch)
+CC := gcc
+CFLAGS := -Wall -Wextra -g -std=c11 -ffunction-sections
+
+CFLAGS += -I$(UNITY_DIR) -I$(SRC_DIR) -I./include
+CFLAGS +=	$(INCLUDE) -D__SWITCH__
+CFLAGS += -Wextra
+CFLAGS += -Werror
+CFLAGS += -Wpointer-arith
+CFLAGS += -Wcast-align
+CFLAGS += -Wunreachable-code
+
+# Source files (exclude main.c if it exists)
+SRC_FILES := $(filter-out $(SRC_DIR)/main.c, $(wildcard $(SRC_DIR)/*.c))
+UNITY_FILES := $(UNITY_DIR)/unity.c
+TEST_FILES := $(wildcard $(TEST_DIR)/*_test.c)
+
+# Object files
+SRC_OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRC_FILES))
+UNITY_OBJS := $(patsubst $(UNITY_DIR)/%.c, $(BUILD_DIR)/%.o, $(UNITY_FILES))
+TEST_OBJS := $(patsubst $(TEST_DIR)/%.c, $(BUILD_DIR)/%.o, $(TEST_FILES))
+
+# Test executable
+TEST_EXEC := $(BUILD_DIR)/run_tests
+
+.PHONY: test clean_test setup_test
+
+# Main test target
+test: setup_test $(TEST_EXEC)
+	@echo "Running tests..."
+	@./$(TEST_EXEC)
+
+# Create test executable
+$(TEST_EXEC): $(SRC_OBJS) $(UNITY_OBJS) $(TEST_OBJS)
+	@echo "Linking test executable..."
+	@$(CC) -o $@ $^
+
+# Compile source files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@echo "Compiling $<..."
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile Unity files
+$(BUILD_DIR)/%.o: $(UNITY_DIR)/%.c
+	@echo "Compiling Unity $<..."
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile test files
+$(BUILD_DIR)/%.o: $(TEST_DIR)/%.c
+	@echo "Compiling test $<..."
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+# Setup test build directory
+setup_test:
+	@mkdir -p $(BUILD_DIR)
+
+# Clean test build
+clean_test:
+	@echo "Cleaning test build..."
+	@rm -rf $(BUILD_DIR)
+
+# Help target
+help:
+	@echo "Test targets:"
+	@echo "  test       - Build and run all tests"
+	@echo "  clean_test - Clean test build files"
+	@echo "  help_test  - Show this help"
