@@ -1,6 +1,6 @@
 .cache/
 build/
-include/
+build_test/
 *.elf
 *.nacp
 *.nro
