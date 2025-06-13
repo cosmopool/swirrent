@@ -10,7 +10,6 @@ void setUp(void) {
 }
 
 void tearDown(void) {
-  // arena_reset(&default_arena);
 }
 
 // ----------------------------------------------------------------------
@@ -112,14 +111,21 @@ void test_list_parsing_multiple_items_should_succeed(void) {
 
 // not needed when using generate_test_runner.rb
 int main(void) {
+  // pre alloc 20MB
+  arena_alloc(&default_arena, 1024 * 1024 * 20);
+  arena_reset(&default_arena);
+
   UNITY_BEGIN();
   RUN_TEST(test_integer_parsing_should_succeed);
   RUN_TEST(test_integer_parsing_should_error_when_missing_enclosing_e);
   RUN_TEST(test_integer_parsing_should_error_when_str_len_less_then_3);
   RUN_TEST(test_integer_parsing_should_error_on_invalid_str);
+  // strings
   RUN_TEST(test_string_parsing_should_succeed);
   RUN_TEST(test_big_string_parsing_should_succeed);
+  // lists
   RUN_TEST(test_list_parsing_should_succeed);
   RUN_TEST(test_list_parsing_multiple_items_should_succeed);
+  // dicts
   return UNITY_END();
 }

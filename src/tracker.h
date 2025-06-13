@@ -3,6 +3,18 @@
 typedef unsigned char InfoHash[20];
 typedef char PeerID[20];
 
+enum PeerMessages : u8 {
+  CHOKE,
+  UNCHOKE,
+  INTERESTED,
+  NOT_INTERESTED,
+  HAVE,
+  BITFIELD,
+  REQUEST,
+  PIECE,
+  CANCEL,
+};
+
 enum Event : u8 {
   STARTED,
   COMPLETED,
