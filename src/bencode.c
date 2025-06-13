@@ -58,9 +58,11 @@ BencodeReturn_t bencode_decode(Arena *arena, const char *bencode, usize len) {
       return ERROR_RESULT;
     }
 
+    void *integer_ptr = arena_alloc(arena, sizeof(usize));
+    *(usize *)integer_ptr = integer;
     return (BencodeReturn_t){
         .kind = BENCODE_KIND_INT,
-        .data = &integer,
+        .data = integer_ptr,
         .remainder = &bencode[end_idx + 1],
     };
   }
@@ -85,15 +87,45 @@ BencodeReturn_t bencode_decode(Arena *arena, const char *bencode, usize len) {
     memcpy(str, &bencode[colon_idx + 1], str_len);
     return (BencodeReturn_t){
         .kind = BENCODE_KIND_STRING,
-        .data = (void *)str,
+        .data = str,
         .remainder = &bencode[colon_idx + str_len + 1],
     };
   }
 
   case BENCODE_KIND_LIST: {
-    // ListNode_t *list = listInit(arena);
-    // while (expression) {
-    // }
+    ListNode_t *list = listInit(arena);
+    const char *remainder = &bencode[1];
+    usize new_len = len - 1;
+    while (!remainder[0] || !(remainder[0] == 'e')) {
+      BencodeReturn_t result = bencode_decode(arena, remainder, new_len);
+      remainder = result.remainder;
+
+      switch (result.kind) {
+      case BENCODE_KIND_INT:
+        break;
+      case BENCODE_KIND_STRING:
+        break;
+      case BENCODE_KIND_DICT:
+        printf("not implemented\n");
+        exit(1);
+        break;
+      case BENCODE_KIND_NONE:
+        return ERROR_RESULT;
+      default:
+        break;
+      };
+
+      void *value = arena_alloc(arena, sizeof(BencodeValue_t));
+      *(BencodeValue_t *)value =
+          (BencodeValue_t){.kind = result.kind, .data = result.data};
+      listAppend(arena, list, value);
+    }
+
+    return (BencodeReturn_t){
+        .kind = BENCODE_KIND_LIST,
+        .data = list,
+        .remainder = remainder,
+    };
   }
 
   case BENCODE_KIND_DICT: {

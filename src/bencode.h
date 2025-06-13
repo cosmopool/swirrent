@@ -1,3 +1,4 @@
+#pragma once
 #include "../include/arena.h"
 #include "core.h"
 
