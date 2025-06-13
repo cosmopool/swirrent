@@ -39,7 +39,8 @@ BencodeValueType parseBencodeValueType(char c) {
 i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
   assert(arena);
 
-  if (len == 0) {
+  printf("==>> len: %ld\n", len);
+  if (len <= 0) {
     return 0;
   }
 
@@ -68,7 +69,7 @@ i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
     }
 
     printf("%ld\n", integer);
-    return bencode_decode(arena, &bencode[end_idx + 1], len - end_idx);
+    return bencode_decode(arena, &bencode[end_idx + 1], len - 1 - end_idx);
   }
 
   case BENCODE_TYPE_STRING: {
@@ -80,12 +81,18 @@ i32 bencode_decode(Arena *arena, const char *bencode, usize len) {
     }
 
     isize colon_idx = colon_ptr - bencode;
-    isize integer = strtol(&bencode[1], NULL, 10);
+    isize str_len = strtol(bencode, NULL, 10);
     if (errno) {
-      char *msg = "[BAD STRING] Not able to decode string lenght: %*s\n";
-      fprintf(stderr, msg, colon_idx, bencode);
+      char *msg = "[BAD STRING] Not able to decode string lenght: %s\n";
+      fprintf(stderr, msg, bencode);
       return -1;
     }
+
+    const char *str = &bencode[colon_idx + 1];
+    printf("%s\n", str);
+    if (str_len + colon_idx + 1) return 0;
+    return bencode_decode(arena, &bencode[colon_idx + str_len + 1],
+                          len - 1 - str_len);
   }
 
   case BENCODE_TYPE_LIST: {
