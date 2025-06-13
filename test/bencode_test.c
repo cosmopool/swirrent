@@ -1,3 +1,4 @@
+#define ARENA_IMPLEMENTATION
 #include "../include/unity.h"
 #include "../src/bencode.h"
 #include <stdio.h>
@@ -15,23 +16,23 @@ void tearDown(void) {
 // INTEGER TESTS
 // ----------------------------------------------------------------------
 void test_integer_parsing_should_succeed(void) {
-  i32 result = bencode_decode(&default_arena, "i-11e", 5);
-  TEST_ASSERT_EQUAL_INT32(0, result);
+  BencodeReturn_t result = bencode_decode(&default_arena, "i-11e", 5);
+  TEST_ASSERT_EQUAL_INT64(-11, *(usize *)result.data);
 }
 
 void test_integer_parsing_should_error_when_missing_enclosing_e(void) {
-  i32 result = bencode_decode(&default_arena, "i-11", 4);
-  TEST_ASSERT_EQUAL_INT32(-1, result);
+  BencodeReturn_t result = bencode_decode(&default_arena, "i-11", 4);
+  TEST_ASSERT_EQUAL_INT64(BENCODE_KIND_NONE, result.kind);
 }
 
 void test_integer_parsing_should_error_when_str_len_less_then_3(void) {
-  i32 result = bencode_decode(&default_arena, "ie", 3);
-  TEST_ASSERT_EQUAL_INT32(-1, result);
+  BencodeReturn_t result = bencode_decode(&default_arena, "ie", 2);
+  TEST_ASSERT_EQUAL_INT64(BENCODE_KIND_NONE, result.kind);
 }
 
 void test_integer_parsing_should_error_on_invalid_str(void) {
-  i32 result = bencode_decode(&default_arena, "i-e", 3);
-  TEST_ASSERT_EQUAL_INT32(-1, result);
+  BencodeReturn_t result = bencode_decode(&default_arena, "i-e", 3);
+  TEST_ASSERT_EQUAL_INT64(BENCODE_KIND_NONE, result.kind);
 }
 
 // ----------------------------------------------------------------------
@@ -39,16 +40,20 @@ void test_integer_parsing_should_error_on_invalid_str(void) {
 // ----------------------------------------------------------------------
 
 void test_string_parsing_should_succeed(void) {
-  i32 result = bencode_decode(&default_arena, "5:hello", 7);
-  TEST_ASSERT_EQUAL_INT32(0, result);
+  BencodeReturn_t result = bencode_decode(&default_arena, "5:hello", 7);
+  TEST_ASSERT_EQUAL_INT64(BENCODE_KIND_STRING, result.kind);
+  TEST_ASSERT_EQUAL_STRING("hello", result.data);
 }
 
 void test_big_string_parsing_should_succeed(void) {
-  i32 result = bencode_decode(
+  BencodeReturn_t result = bencode_decode(
       &default_arena,
       "72:AooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooA",
       7);
-  TEST_ASSERT_EQUAL_INT32(0, result);
+  TEST_ASSERT_EQUAL_INT64(BENCODE_KIND_STRING, result.kind);
+  TEST_ASSERT_EQUAL_STRING(
+      "AooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooA",
+      result.data);
 }
 
 // not needed when using generate_test_runner.rb
