@@ -58,6 +58,7 @@ CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES) `curl-config --cflags`
 
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__
+CFLAGS += -std=c99
 CFLAGS += -Wextra
 CFLAGS += -Werror
 CFLAGS += -Wpointer-arith
