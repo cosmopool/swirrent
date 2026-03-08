@@ -145,35 +145,34 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
       while (bencode.data[parser->cursor] != 'e') {
         String key = parseString(parser, bencode);
         usize key_hash = hashString(key);
-        switch (key_hash) {
-        case ANNOUNCE: {
+        if (memcmp(key.data, "announce", 8) == 0) {
           metainfo.announce = parseString(parser, bencode);
           continue;
         }
 
-        case NAME: {
+        if (memcmp(key.data, "name", 4) == 0) {
           metainfo.name = parseString(parser, bencode);
           continue;
         }
 
-        case PIECE_LENGTH: {
+        if (memcmp(key.data, "piece length", 12) == 0) {
           metainfo.piece_length = parseInteger(parser, bencode);
           continue;
         }
 
-        case PIECES: {
+        if (memcmp(key.data, "pieces", 6) == 0) {
           metainfo.is_single_file = true;
           metainfo.pieces = parseString(parser, bencode);
           continue;
         }
 
-        case LENGTH: {
+        if (memcmp(key.data, "length", 6) == 0) {
           metainfo.is_single_file = true;
           metainfo.single_file.length = parseInteger(parser, bencode);
           continue;
         }
 
-        case INFO: {
+        if (memcmp(key.data, "info", 4) == 0) {
           u8 hash[SHA_DIGEST_LENGTH];
           usize start = parser->cursor;
           bencode_decode(parser, bencode);
@@ -190,12 +189,9 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
           continue;
         }
 
-        default: {
-          BencodeValue value = bencode_decode(parser, bencode);
-          (void)value;
-          continue;
-        }
-        }
+        BencodeValue value = bencode_decode(parser, bencode);
+        (void)value;
+        continue;
       }
       parser->cursor++;
       usize dict_end = parser->cursor;
