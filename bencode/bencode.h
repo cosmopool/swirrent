@@ -15,6 +15,7 @@ typedef struct {
   usize cursor;
   usize dict_stack_pos;
   usize dict_stack[128];
+  char tmp_buff[128];
 } BencodeParser;
 
 typedef i64 BencodeNumber;

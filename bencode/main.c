@@ -1,4 +1,5 @@
 #include "bencode.h"
+#include <stdio.h>
 #define STRING_IMPLEMENTATION
 #include "core.h"
 #include "teeny-sha1.c"
@@ -76,7 +77,8 @@ isize parseInteger(BencodeParser *parser, String bencode) {
   return integer;
 }
 
-BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
+BencodeValue bencode_decode(BencodeParser *parser, String bencode,
+                            const char *dict_path) {
   if (bencode.len <= 0) {
     fprintf(stderr, "Empty data! Nothing to parse.\n");
     exit(1);
@@ -99,51 +101,73 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
       usize dict_start = parser->cursor;
       while (bencode.data[parser->cursor] != 'e') {
         String key = parseString(parser, bencode);
+        bool is_at_root = dict_path[0] == '\0';
 
-        if (key.data[0] == 'a' && key.len == 13 &&
+        if (is_at_root && key.data[0] == 'a' && key.len == 13 &&
             memcmp(key.data, "announce-list", 13) == 0) {
-          BencodeValue v = bencode_decode(parser, bencode);
+          BencodeValue v = bencode_decode(parser, bencode, dict_path);
           (void)v;
           continue;
         }
 
-        if (key.data[0] == 'a' && key.len == 8 &&
+        if (is_at_root && key.data[0] == 'a' && key.len == 8 &&
             memcmp(key.data, "announce", 8) == 0) {
           metainfo.announce = parseString(parser, bencode);
           continue;
         }
 
-        if (key.data[0] == 'n' && key.len == 4 &&
-            memcmp(key.data, "name", 4) == 0) {
+        if (dict_path[0] == 'i' && key.data[0] == 'n' && key.len == 4 &&
+            memcmp(key.data, "name", 4) == 0 &&
+            memcmp(dict_path, "info", 10) == 0) {
           metainfo.name = parseString(parser, bencode);
           continue;
         }
 
-        if (key.data[0] == 'p' && key.len == 12 &&
-            memcmp(key.data, "piece length", 12) == 0) {
+        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 12 &&
+            memcmp(key.data, "piece length", 12) == 0 &&
+            memcmp(dict_path, "info", 10) == 0) {
           metainfo.piece_length = parseInteger(parser, bencode);
           continue;
         }
 
-        if (key.data[0] == 'p' && key.len == 6 &&
-            memcmp(key.data, "pieces", 6) == 0) {
-          metainfo.is_single_file = true;
+        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 6 &&
+            memcmp(key.data, "pieces", 6) == 0 &&
+            memcmp(dict_path, "info", 10) == 0) {
           metainfo.pieces = parseString(parser, bencode);
           continue;
         }
 
-        if (key.data[0] == 'l' && key.len == 6 &&
-            memcmp(key.data, "length", 6) == 0) {
+        if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
+            memcmp(key.data, "length", 6) == 0 &&
+            memcmp(dict_path, "info", 10) == 0) {
           metainfo.is_single_file = true;
           metainfo.single_file.length = parseInteger(parser, bencode);
           continue;
         }
 
-        if (key.data[0] == 'i' && key.len == 4 &&
+        if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
+            memcmp(key.data, "length", 6) == 0 &&
+            memcmp(dict_path, "info|files", 10) == 0) {
+          metainfo.is_single_file = false;
+          BencodeValue value = bencode_decode(parser, bencode, dict_path);
+          printf("length: %ld\n", value.num);
+          continue;
+        }
+
+        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 4 &&
+            memcmp(key.data, "path", 4) == 0 &&
+            memcmp(dict_path, "info|files", 10) == 0) {
+          metainfo.is_single_file = false;
+          BencodeValue value = bencode_decode(parser, bencode, dict_path);
+          printf("path: %.*s\n", (u32)value.string.len, value.string.data);
+          continue;
+        }
+
+        if (is_at_root && key.data[0] == 'i' && key.len == 4 &&
             memcmp(key.data, "info", 4) == 0) {
           u8 hash[SHA_DIGEST_LENGTH];
           usize start = parser->cursor;
-          bencode_decode(parser, bencode);
+          bencode_decode(parser, bencode, "info");
           usize end = parser->cursor - 1;
           assert(bencode.data[start] == 'd');
           assert(bencode.data[end] == 'e');
@@ -159,7 +183,16 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
           continue;
         }
 
-        BencodeValue value = bencode_decode(parser, bencode);
+        for (u32 i = 0; i < key.len; i++) {
+          parser->tmp_buff[i] = key.data[i];
+        }
+        parser->tmp_buff[key.len] = '\0';
+
+        char new_key_path[128] = {0};
+        sprintf(new_key_path, "%s|%s", dict_path, parser->tmp_buff);
+        printf("-> %s\n", new_key_path);
+
+        BencodeValue value = bencode_decode(parser, bencode, new_key_path);
         (void)value;
         continue;
       }
@@ -177,7 +210,7 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
       usize start = parser->cursor;
       // printf("LIST: [");
       while (bencode.data[parser->cursor] != 'e') {
-        BencodeValue v = bencode_decode(parser, bencode);
+        BencodeValue v = bencode_decode(parser, bencode, dict_path);
         (void)v;
         // switch (v.kind) {
         // case STRING:
@@ -237,7 +270,7 @@ i32 main(i32 argc, char **argv) {
 
   BencodeParser parser = {0};
   assert(bencode.data[parser.cursor] == 'd');
-  bencode_decode(&parser, bencode);
+  bencode_decode(&parser, bencode, "");
 
   printf("meta info\n");
   printf("announce: ");
