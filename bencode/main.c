@@ -280,11 +280,11 @@ i32 main(i32 argc, char **argv) {
   mcl_printString(metainfo.name);
   printf("\n");
   if (metainfo.is_single_file) {
-    printf("piece_length: %ldK\n", metainfo.piece_length / 1024);
     printf("length: %ldM\n", metainfo.single_file.length / 1024 / 1024);
-    printf("pieces: %lu", metainfo.pieces.len / 20);
   } else {
   }
+  printf("piece length: %ldK\n", metainfo.piece_length / 1024);
+  printf("pieces: %lu", metainfo.pieces.len / 20);
   printf("\n");
 
   return 0;
