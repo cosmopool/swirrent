@@ -191,8 +191,8 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
         // }
       }
       // printf("]");
-      parser->cursor++;
       usize end = parser->cursor;
+      parser->cursor++;
       BencodeValue value = {0};
       value.kind = LIST;
       value.string = (String){.len = end - start, .data = &bencode.data[start]};
