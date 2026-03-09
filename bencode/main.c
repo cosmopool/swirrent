@@ -5,57 +5,12 @@
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
-#include <assert.h>
 #include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
-#define ANNOUNCE 7572165266058428
-#define NAME 6385503302
-#define PIECE_LENGTH -2824521067031402771
-#define PIECES 6953900567806
-#define INFO 6385337553
-#define LENGTH 6953739610823
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
 static TorrentMetainfo metainfo = {0};
-
-// http://www.cse.yorku.ca/~oz/hash.html
-isize hash(char *str) {
-  isize hash = 5381;
-  i32 c;
-
-  while ((c = *str++)) {
-    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
-  }
-
-  return hash;
-}
-
-// http://www.cse.yorku.ca/~oz/hash.html
-isize hashString(String str) {
-  char a[1024] = {0};
-  for (u32 i = 0; i < str.len; i++) {
-    a[i] = str.data[i];
-  }
-  a[str.len] = '\0';
-  isize h = hash(a);
-  // printf("HASH: %ld | STRING: %s\n", h, a);
-  return h;
-}
-
-void openDict(BencodeParser *parser, char *key) {
-  usize key_hash = hash(key);
-  parser->dict_stack_pos++;
-  parser->dict_stack[parser->dict_stack_pos] = key_hash;
-}
-
-void closeDict(BencodeParser *parser) {
-  parser->dict_stack[parser->dict_stack_pos] = 0;
-  parser->dict_stack_pos--;
-}
 
 void printFromTo(usize start, usize end, const char *str) {
   char buff[1024] = {0};
@@ -144,7 +99,7 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
       usize dict_start = parser->cursor;
       while (bencode.data[parser->cursor] != 'e') {
         String key = parseString(parser, bencode);
-        usize key_hash = hashString(key);
+
         if (memcmp(key.data, "announce", 8) == 0) {
           metainfo.announce = parseString(parser, bencode);
           continue;
