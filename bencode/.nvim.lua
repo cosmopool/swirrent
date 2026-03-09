@@ -14,8 +14,7 @@ dap.configurations.c = {
     request = "launch",
     program = function()
       -- os.execute("clang -g -O0 -c -o decoder.o main.c && clang -g -O0 -o decoder decoder.o")
-      os.execute(
-        "clang -g -O0 -L/opt/homebrew/Cellar/openssl@3/3.6.1/lib -I/opt/homebrew/Cellar/openssl@3/3.6.1/include -lssl -lcrypto -o decoder main.c")
+      os.execute("clang -g -O0 -o decoder main.c")
       return "${workspaceFolder}/decoder"
     end,
     cwd = "${workspaceFolder}",
