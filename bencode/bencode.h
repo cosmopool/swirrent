@@ -13,6 +13,7 @@ typedef enum : u8 {
 
 typedef struct {
   usize cursor;
+  usize path_cursor;
   usize dict_stack_pos;
   usize dict_stack[128];
   char tmp_buff[128];
@@ -39,6 +40,10 @@ void BencodeDictSet(BencodeDictionary *dict, String key, void *value,
 void *BencodeDictGet(BencodeDictionary *dict, String key);
 
 typedef struct {
+  union {
+    usize num;
+    String *string;
+  };
 } BencodeList;
 
 typedef struct {

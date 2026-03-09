@@ -11,6 +11,8 @@
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
+static String paths[2048 * 4] = {0};
+static TorrentFile files[2048] = {0};
 static TorrentMetainfo metainfo = {0};
 
 void printFromTo(usize start, usize end, const char *str) {
@@ -150,7 +152,7 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
             memcmp(dict_path, "info|files", 10) == 0) {
           metainfo.is_single_file = false;
           BencodeValue value = bencode_decode(parser, bencode, dict_path);
-          printf("length: %ld\n", value.num);
+          files[metainfo.multi_file.file_count].length = value.num;
           continue;
         }
 
@@ -158,8 +160,20 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
             memcmp(key.data, "path", 4) == 0 &&
             memcmp(dict_path, "info|files", 10) == 0) {
           metainfo.is_single_file = false;
-          BencodeValue value = bencode_decode(parser, bencode, dict_path);
-          printf("path: %.*s\n", (u32)value.string.len, value.string.data);
+
+          // Record where this file's paths start in the flat array
+          usize file_idx = metainfo.multi_file.file_count;
+          files[file_idx].path = &paths[parser->path_cursor];
+
+          // Manually consume the list 'l...e' inline, no recursive decode
+          assert(bencode.data[parser->cursor] == 'l');
+          parser->cursor++;
+          while (bencode.data[parser->cursor] != 'e') {
+            paths[parser->path_cursor++] = parseString(parser, bencode);
+            files[file_idx].path_count++;
+          }
+          parser->cursor++;
+          metainfo.multi_file.file_count++;
           continue;
         }
 
@@ -244,7 +258,7 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
 }
 
 i32 main(i32 argc, char **argv) {
-  FILE *file_ptr = fopen("f.torrent", "rb");
+  FILE *file_ptr = fopen("e.torrent", "rb");
   if (file_ptr == NULL) {
     perror("fopen");
     exit(1);
@@ -259,7 +273,7 @@ i32 main(i32 argc, char **argv) {
   char *file_content = (char *)malloc(file_length * sizeof(char));
   fread(file_content, file_length, 1, file_ptr);
   fclose(file_ptr);
-  printf("FILE SIZE: %luK\n", file_length / 1024);
+  printf("FILE SIZE: %lluK\n", file_length / 1024);
 
   String bencode = {
       .len = file_length,
@@ -282,6 +296,17 @@ i32 main(i32 argc, char **argv) {
   if (metainfo.is_single_file) {
     printf("length: %ldM\n", metainfo.single_file.length / 1024 / 1024);
   } else {
+    metainfo.multi_file.files = (TorrentFile *)&files;
+    if (metainfo.multi_file.file_count > 0) printf("files:\n");
+    for (u32 i = 0; i < metainfo.multi_file.file_count; i++) {
+      TorrentFile file = files[i];
+      printf(" length: %ld\n", file.length);
+      printf(" path:\n");
+      for (u32 j = 0; j < file.path_count; j++) {
+        String path = file.path[j];
+        printf("  - %.*s\n", (u32)path.len, path.data);
+      }
+    }
   }
   printf("piece length: %ldK\n", metainfo.piece_length / 1024);
   printf("pieces: %lu", metainfo.pieces.len / 20);
