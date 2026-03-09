@@ -1,6 +1,7 @@
 #include "bencode.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
+#include "teeny-sha1.c"
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
@@ -10,14 +11,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <openssl/sha.h>
-
 #define ANNOUNCE 7572165266058428
 #define NAME 6385503302
 #define PIECE_LENGTH -2824521067031402771
 #define PIECES 6953900567806
 #define INFO 6385337553
 #define LENGTH 6953739610823
+#define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
 static TorrentMetainfo metainfo = {0};
@@ -179,7 +179,9 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
           usize end = parser->cursor - 1;
           assert(bencode.data[start] == 'd');
           assert(bencode.data[end] == 'e');
-          SHA1((u8 *)&bencode.data[start], end - start, hash);
+          if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - start) !=
+              0)
+            exit(1);
 
           char sha1string[SHA_DIGEST_LENGTH * 2 + 1];
           for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
@@ -256,7 +258,7 @@ i32 main(i32 argc, char **argv) {
   char *file_content = (char *)malloc(file_length * sizeof(char));
   fread(file_content, file_length, 1, file_ptr);
   fclose(file_ptr);
-  printf("FILE SIZE: %lluK\n", file_length / 1024);
+  printf("FILE SIZE: %luK\n", file_length / 1024);
 
   String bencode = {
       .len = file_length,
