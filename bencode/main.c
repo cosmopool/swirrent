@@ -100,34 +100,47 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
       while (bencode.data[parser->cursor] != 'e') {
         String key = parseString(parser, bencode);
 
-        if (memcmp(key.data, "announce", 8) == 0) {
+        if (key.data[0] == 'a' && key.len == 13 &&
+            memcmp(key.data, "announce-list", 13) == 0) {
+          BencodeValue v = bencode_decode(parser, bencode);
+          (void)v;
+          continue;
+        }
+
+        if (key.data[0] == 'a' && key.len == 8 &&
+            memcmp(key.data, "announce", 8) == 0) {
           metainfo.announce = parseString(parser, bencode);
           continue;
         }
 
-        if (memcmp(key.data, "name", 4) == 0) {
+        if (key.data[0] == 'n' && key.len == 4 &&
+            memcmp(key.data, "name", 4) == 0) {
           metainfo.name = parseString(parser, bencode);
           continue;
         }
 
-        if (memcmp(key.data, "piece length", 12) == 0) {
+        if (key.data[0] == 'p' && key.len == 12 &&
+            memcmp(key.data, "piece length", 12) == 0) {
           metainfo.piece_length = parseInteger(parser, bencode);
           continue;
         }
 
-        if (memcmp(key.data, "pieces", 6) == 0) {
+        if (key.data[0] == 'p' && key.len == 6 &&
+            memcmp(key.data, "pieces", 6) == 0) {
           metainfo.is_single_file = true;
           metainfo.pieces = parseString(parser, bencode);
           continue;
         }
 
-        if (memcmp(key.data, "length", 6) == 0) {
+        if (key.data[0] == 'l' && key.len == 6 &&
+            memcmp(key.data, "length", 6) == 0) {
           metainfo.is_single_file = true;
           metainfo.single_file.length = parseInteger(parser, bencode);
           continue;
         }
 
-        if (memcmp(key.data, "info", 4) == 0) {
+        if (key.data[0] == 'i' && key.len == 4 &&
+            memcmp(key.data, "info", 4) == 0) {
           u8 hash[SHA_DIGEST_LENGTH];
           usize start = parser->cursor;
           bencode_decode(parser, bencode);
