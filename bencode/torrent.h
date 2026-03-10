@@ -4,13 +4,13 @@
 #include "core.h"
 #include <stdbool.h>
 
-typedef struct {
+typedef struct TorrentFile {
   String *path; // Array of path components
   usize length;
   usize path_count;
 } TorrentFile;
 
-typedef struct {
+typedef struct TorrentMetainfo {
   // The URL of the tracker.
   String announce;
 
@@ -60,7 +60,7 @@ typedef enum {
   TRACKER_EVENT_STOPPED,
 } TrackerEvent;
 
-typedef struct {
+typedef struct TorrentTracker {
   // info_hash
   // The 20 byte sha1 hash of the bencoded form of the info value from the
   // metainfo file. This value will almost certainly have to be escaped.
@@ -112,24 +112,32 @@ typedef struct {
   TrackerEvent event;
 } TorrentTracker;
 
-typedef struct {
+typedef struct TorrentPeer {
+  String peer_id;
+  String ip;
+  u16 port;
+} TorrentPeer;
+
+typedef struct TorrentTrackerResponse {
   // Tracker response fields
   // failure reason - optional human readable string explaining why the query
   // failed
   String failure_reason;
+  String warning_message;
 
   // interval - number of seconds the downloader should wait between regular
   // rerequests
   usize interval;
+  usize min_interval;
+
+  usize complete;
+  usize downloaded;
+  usize incomplete;
 
   // peers - list of dictionaries corresponding to peers
-  struct {
-    String peer_id;
-    String ip;
-    u16 port;
-  } *peers;
+  TorrentPeer *peers;
   usize peer_count;
-} asdf;
+} TorrentTrackerResponse;
 
 #ifndef TORRENT_IMPLEMENTATION
 #define TORRENT_IMPLEMENTATION

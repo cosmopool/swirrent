@@ -37,7 +37,7 @@ typedef double f64;
  * @see CL_stringNew()
  * @see CL_stringNewC()
  */
-typedef struct {
+typedef struct String {
   usize len;
   const char *data;
 } String;
