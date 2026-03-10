@@ -160,11 +160,9 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
     String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      BencodeValue value = bencodeDecode(parser, bencode);
-      assert(value.kind == STRING);
-      printf("failure reason: %.*s\n", (u32)value.string.len,
-             value.string.data);
-      return value;
+      String str = decodeString(parser, bencode);
+      printf("failure reason: %.*s\n", (u32)str.len, str.data);
+      return (BencodeValue){.kind = STRING, .string = str};
     }
 
     if (STRING_MATCHES("announce", key)) {
@@ -337,11 +335,9 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
     String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      BencodeValue value = bencodeDecode(parser, bencode);
-      assert(value.kind == STRING);
-      printf("failure reason: %.*s\n", (u32)value.string.len,
-             value.string.data);
-      return value;
+      String str = decodeString(parser, bencode);
+      printf("failure reason: %.*s\n", (u32)str.len, str.data);
+      return (BencodeValue){.kind = STRING, .string = str};
     }
 
     if (STRING_MATCHES("complete", key)) {
