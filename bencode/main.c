@@ -81,7 +81,7 @@ void printStringSlice(usize len, const char *str_c) {
   printf("DEBUG: %s\n", buff);
 }
 
-String parseString(BencodeParser *parser, String bencode) {
+String decodeString(BencodeParser *parser, String bencode) {
   char *colon_ptr;
   errno = 0;
   isize str_len = strtol(&bencode.data[parser->cursor], &colon_ptr, 10);
@@ -107,7 +107,7 @@ String parseString(BencodeParser *parser, String bencode) {
   return value.string;
 }
 
-isize parseInteger(BencodeParser *parser, String bencode) {
+isize decodeInteger(BencodeParser *parser, String bencode) {
   assert(bencode.len - parser->cursor > 3);
   char *end_ptr;
 
@@ -126,12 +126,12 @@ isize parseInteger(BencodeParser *parser, String bencode) {
   return integer;
 }
 
-BencodeValue parseList(BencodeParser *parser, String bencode) {
+BencodeValue decodeList(BencodeParser *parser, String bencode) {
   parser->cursor++;
   usize start = parser->cursor;
   // printf("LIST: [");
   while (bencode.data[parser->cursor] != 'e') {
-    BencodeValue v = bencode_decode(parser, bencode);
+    BencodeValue v = bencodeDecode(parser, bencode);
     (void)v;
     // switch (v.kind) {
     // case STRING:
@@ -153,14 +153,14 @@ BencodeValue parseList(BencodeParser *parser, String bencode) {
   return value;
 }
 
-BencodeValue parseDict(BencodeParser *parser, String bencode) {
+BencodeValue decodeDict(BencodeParser *parser, String bencode) {
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = parseString(parser, bencode);
+    String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      BencodeValue value = bencode_decode(parser, bencode);
+      BencodeValue value = bencodeDecode(parser, bencode);
       assert(value.kind == STRING);
       printf("failure reason: %.*s\n", (u32)value.string.len,
              value.string.data);
@@ -168,7 +168,7 @@ BencodeValue parseDict(BencodeParser *parser, String bencode) {
     }
 
     if (STRING_MATCHES("announce", key)) {
-      metainfo.announce = parseString(parser, bencode);
+      metainfo.announce = decodeString(parser, bencode);
       continue;
     }
 
@@ -188,14 +188,14 @@ BencodeValue parseDict(BencodeParser *parser, String bencode) {
           usize start = parser->cursor;
           while (bencode.data[parser->cursor] != 'e') {
             trackers_url[metainfo.trackers_count] =
-                parseString(parser, bencode);
+                decodeString(parser, bencode);
             metainfo.trackers_count++;
           }
           usize end = parser->cursor;
           parser->cursor++;
           continue;
         }
-        BencodeValue v = bencode_decode(parser, bencode);
+        BencodeValue v = bencodeDecode(parser, bencode);
         assert(v.kind == STRING);
         trackers_url[metainfo.trackers_count] = v.string;
         metainfo.trackers_count++;
@@ -209,7 +209,7 @@ BencodeValue parseDict(BencodeParser *parser, String bencode) {
     }
 
     printf("-> |%.*s\n", (u32)key.len, key.data);
-    BencodeValue value = bencode_decode(parser, bencode);
+    BencodeValue value = bencodeDecode(parser, bencode);
     (void)value;
     continue;
   }
@@ -228,11 +228,11 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
   usize start = parser->cursor;
   parser->cursor++;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = parseString(parser, bencode);
+    String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("length", key)) {
       files[metainfo.multi_file.file_count].length =
-          parseInteger(parser, bencode);
+          decodeInteger(parser, bencode);
       continue;
     }
 
@@ -245,7 +245,7 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
       assert(IS_LIST);
       parser->cursor++;
       while (bencode.data[parser->cursor] != 'e') {
-        paths[parser->path_cursor++] = parseString(parser, bencode);
+        paths[parser->path_cursor++] = decodeString(parser, bencode);
         files[file_idx].path_count++;
       }
       parser->cursor++;
@@ -267,20 +267,20 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
   usize start = parser->cursor;
   parser->cursor++;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = parseString(parser, bencode);
+    String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("name", key)) {
-      metainfo.name = parseString(parser, bencode);
+      metainfo.name = decodeString(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("piece length", key)) {
-      metainfo.piece_length = parseInteger(parser, bencode);
+      metainfo.piece_length = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("pieces", key)) {
-      metainfo.pieces = parseString(parser, bencode);
+      metainfo.pieces = decodeString(parser, bencode);
       continue;
     }
 
@@ -288,7 +288,7 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
       assert(metainfo.multi_file.file_count == 0);
       assert(!metainfo.multi_file.files);
       metainfo.is_single_file = true;
-      metainfo.single_file.length = parseInteger(parser, bencode);
+      metainfo.single_file.length = decodeInteger(parser, bencode);
       continue;
     }
 
@@ -308,7 +308,7 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
     }
 
     printf("-> info|%.*s\n", (u32)key.len, key.data);
-    BencodeValue value = bencode_decode(parser, bencode);
+    BencodeValue value = bencodeDecode(parser, bencode);
     (void)value;
     continue;
   }
@@ -334,10 +334,10 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = parseString(parser, bencode);
+    String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      BencodeValue value = bencode_decode(parser, bencode);
+      BencodeValue value = bencodeDecode(parser, bencode);
       assert(value.kind == STRING);
       printf("failure reason: %.*s\n", (u32)value.string.len,
              value.string.data);
@@ -345,37 +345,37 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
     }
 
     if (STRING_MATCHES("complete", key)) {
-      tracker_resp->complete = parseInteger(parser, bencode);
+      tracker_resp->complete = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("downloaded", key)) {
-      tracker_resp->downloaded = parseInteger(parser, bencode);
+      tracker_resp->downloaded = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("incomplete", key)) {
-      tracker_resp->incomplete = parseInteger(parser, bencode);
+      tracker_resp->incomplete = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("interval", key)) {
-      tracker_resp->interval = parseInteger(parser, bencode);
+      tracker_resp->interval = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("min interval", key)) {
-      tracker_resp->min_interval = parseInteger(parser, bencode);
+      tracker_resp->min_interval = decodeInteger(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("warning message", key)) {
-      tracker_resp->warning_message = parseString(parser, bencode);
+      tracker_resp->warning_message = decodeString(parser, bencode);
       continue;
     }
 
     printf("-> |%.*s\n", (u32)key.len, key.data);
-    BencodeValue value = bencode_decode(parser, bencode);
+    BencodeValue value = bencodeDecode(parser, bencode);
     (void)value;
     continue;
   }
@@ -388,7 +388,7 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
   return value;
 };
 
-BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
+BencodeValue bencodeDecode(BencodeParser *parser, String bencode) {
   if (bencode.len <= 0) {
     fprintf(stderr, "Empty data! Nothing to parse.\n");
     exit(1);
@@ -397,22 +397,22 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
   while (parser->cursor < bencode.len) {
     switch (bencode.data[parser->cursor]) {
     case 'i': {
-      isize i = parseInteger(parser, bencode);
+      isize i = decodeInteger(parser, bencode);
       return (BencodeValue){.kind = INT, .num = i};
     }
 
     case '0' ... '9': {
-      String s = parseString(parser, bencode);
+      String s = decodeString(parser, bencode);
       return (BencodeValue){.kind = STRING, .string = s};
     }
 
     case 'd': {
-      BencodeValue v = parseDict(parser, bencode);
+      BencodeValue v = decodeDict(parser, bencode);
       return v;
     }
 
     case 'l': {
-      BencodeValue v = parseList(parser, bencode);
+      BencodeValue v = decodeList(parser, bencode);
       return v;
     }
     case 'e':
@@ -469,7 +469,7 @@ i32 main(i32 argc, char **argv) {
 
   BencodeParser parser = {0};
   assert(bencode.data[parser.cursor] == 'd');
-  bencode_decode(&parser, bencode);
+  bencodeDecode(&parser, bencode);
 
   if (!metainfo.is_single_file) {
     metainfo.multi_file.files = (TorrentFile *)&files;

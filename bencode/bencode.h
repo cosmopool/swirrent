@@ -56,9 +56,9 @@ typedef struct {
   };
 } BencodeValue;
 
-BencodeValue bencode_decode(BencodeParser *parser, String bencode);
-isize parseInteger(BencodeParser *parser, String bencode);
-String parseString(BencodeParser *parser, String bencode);
-BencodeValue parseDict(BencodeParser *parser, String bencode);
-BencodeValue parseList(BencodeParser *parser, String bencode);
+BencodeValue bencodeDecode(BencodeParser *parser, String bencode);
+isize decodeInteger(BencodeParser *parser, String bencode);
+String decodeString(BencodeParser *parser, String bencode);
+BencodeValue decodeDict(BencodeParser *parser, String bencode);
+BencodeValue decodeList(BencodeParser *parser, String bencode);
 BencodeValue decodeInfoDict(BencodeParser *parser, String bencode);
