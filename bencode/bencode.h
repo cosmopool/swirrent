@@ -55,3 +55,12 @@ typedef struct {
     BencodeDictionary dictionary;
   };
 } BencodeValue;
+
+BencodeValue bencode_decode(BencodeParser *parser, String bencode,
+                            const char *dict_path);
+isize parseInteger(BencodeParser *parser, String bencode);
+String parseString(BencodeParser *parser, String bencode);
+BencodeValue parseDict(BencodeParser *parser, String bencode,
+                       const char *dict_path);
+BencodeValue parseList(BencodeParser *parser, String bencode,
+                       const char *dict_path);

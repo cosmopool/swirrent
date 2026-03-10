@@ -111,6 +111,158 @@ isize parseInteger(BencodeParser *parser, String bencode) {
   return integer;
 }
 
+BencodeValue parseList(BencodeParser *parser, String bencode,
+                       const char *dict_path) {
+  parser->cursor++;
+  usize start = parser->cursor;
+  // printf("LIST: [");
+  while (bencode.data[parser->cursor] != 'e') {
+    BencodeValue v = bencode_decode(parser, bencode, dict_path);
+    (void)v;
+    // switch (v.kind) {
+    // case STRING:
+    // case LIST:
+    // case DICT:
+    //   printf("%.*s,", (u32)v.string.len, v.string.data);
+    //   break;
+    // case INT:
+    //   printf("%lld,", v.num);
+    //   break;
+    // }
+  }
+  // printf("]");
+  usize end = parser->cursor;
+  parser->cursor++;
+  BencodeValue value = {0};
+  value.kind = LIST;
+  value.string = (String){.len = end - start, .data = &bencode.data[start]};
+  return value;
+}
+
+BencodeValue parseDict(BencodeParser *parser, String bencode,
+                       const char *dict_path) {
+  parser->cursor++;
+  usize dict_start = parser->cursor;
+  while (bencode.data[parser->cursor] != 'e') {
+    String key = parseString(parser, bencode);
+    bool is_at_root = dict_path[0] == '\0';
+
+    if (is_at_root && key.data[0] == 'f' && key.len == 14 &&
+        memcmp(key.data, "failure reason", 14) == 0) {
+      BencodeValue value = bencode_decode(parser, bencode, dict_path);
+      assert(value.kind == STRING);
+      printf("failure reason: %.*s\n", (u32)value.string.len,
+             value.string.data);
+      return value;
+    }
+
+    if (is_at_root && key.data[0] == 'a' && key.len == 13 &&
+        memcmp(key.data, "announce-list", 13) == 0) {
+      BencodeValue v = bencode_decode(parser, bencode, dict_path);
+      (void)v;
+      continue;
+    }
+
+    if (is_at_root && key.data[0] == 'a' && key.len == 8 &&
+        memcmp(key.data, "announce", 8) == 0) {
+      metainfo.announce = parseString(parser, bencode);
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'n' && key.len == 4 &&
+        memcmp(key.data, "name", 4) == 0 &&
+        memcmp(dict_path, "info", 10) == 0) {
+      metainfo.name = parseString(parser, bencode);
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 12 &&
+        memcmp(key.data, "piece length", 12) == 0 &&
+        memcmp(dict_path, "info", 10) == 0) {
+      metainfo.piece_length = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 6 &&
+        memcmp(key.data, "pieces", 6) == 0 &&
+        memcmp(dict_path, "info", 10) == 0) {
+      metainfo.pieces = parseString(parser, bencode);
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
+        memcmp(key.data, "length", 6) == 0 &&
+        memcmp(dict_path, "info", 10) == 0) {
+      metainfo.is_single_file = true;
+      metainfo.single_file.length = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
+        memcmp(key.data, "length", 6) == 0 &&
+        memcmp(dict_path, "info|files", 10) == 0) {
+      metainfo.is_single_file = false;
+      BencodeValue value = bencode_decode(parser, bencode, dict_path);
+      files[metainfo.multi_file.file_count].length = value.num;
+      continue;
+    }
+
+    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 4 &&
+        memcmp(key.data, "path", 4) == 0 &&
+        memcmp(dict_path, "info|files", 10) == 0) {
+      metainfo.is_single_file = false;
+
+      // Record where this file's paths start in the flat array
+      usize file_idx = metainfo.multi_file.file_count;
+      files[file_idx].path = &paths[parser->path_cursor];
+
+      // Manually consume the list 'l...e' inline, no recursive decode
+      assert(bencode.data[parser->cursor] == 'l');
+      parser->cursor++;
+      while (bencode.data[parser->cursor] != 'e') {
+        paths[parser->path_cursor++] = parseString(parser, bencode);
+        files[file_idx].path_count++;
+      }
+      parser->cursor++;
+      metainfo.multi_file.file_count++;
+      continue;
+    }
+
+    if (is_at_root && key.data[0] == 'i' && key.len == 4 &&
+        memcmp(key.data, "info", 4) == 0) {
+      u8 hash[SHA_DIGEST_LENGTH];
+      usize start = parser->cursor;
+      bencode_decode(parser, bencode, "info");
+      usize end = parser->cursor - 1;
+      assert(bencode.data[start] == 'd');
+      assert(bencode.data[end] == 'e');
+      if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - start) != 0)
+        exit(1);
+
+      for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+        sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+      }
+      continue;
+    }
+
+    char new_key_path[128] = {0};
+    usize len = strlen(dict_path);
+    snprintf(new_key_path, len + 1 + key.len + 1, "%s|%s", dict_path, key.data);
+    printf("-> %s\n", new_key_path);
+
+    BencodeValue value = bencode_decode(parser, bencode, new_key_path);
+    (void)value;
+    continue;
+  }
+  parser->cursor++;
+  usize dict_end = parser->cursor;
+  BencodeValue value = {0};
+  value.kind = DICT;
+  value.string =
+      (String){.len = dict_end - dict_start, .data = &bencode.data[dict_start]};
+  return value;
+};
+
 BencodeValue bencode_decode(BencodeParser *parser, String bencode,
                             const char *dict_path) {
   if (bencode.len <= 0) {
@@ -131,155 +283,13 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
     }
 
     case 'd': {
-      parser->cursor++;
-      usize dict_start = parser->cursor;
-      while (bencode.data[parser->cursor] != 'e') {
-        String key = parseString(parser, bencode);
-        bool is_at_root = dict_path[0] == '\0';
-
-        if (is_at_root && key.data[0] == 'f' && key.len == 14 &&
-            memcmp(key.data, "failure reason", 14) == 0) {
-          BencodeValue value = bencode_decode(parser, bencode, dict_path);
-          assert(value.kind == STRING);
-          printf("failure reason: %.*s\n", (u32)value.string.len,
-                 value.string.data);
-          return value;
-        }
-
-        if (is_at_root && key.data[0] == 'a' && key.len == 13 &&
-            memcmp(key.data, "announce-list", 13) == 0) {
-          BencodeValue v = bencode_decode(parser, bencode, dict_path);
-          (void)v;
-          continue;
-        }
-
-        if (is_at_root && key.data[0] == 'a' && key.len == 8 &&
-            memcmp(key.data, "announce", 8) == 0) {
-          metainfo.announce = parseString(parser, bencode);
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'n' && key.len == 4 &&
-            memcmp(key.data, "name", 4) == 0 &&
-            memcmp(dict_path, "info", 10) == 0) {
-          metainfo.name = parseString(parser, bencode);
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 12 &&
-            memcmp(key.data, "piece length", 12) == 0 &&
-            memcmp(dict_path, "info", 10) == 0) {
-          metainfo.piece_length = parseInteger(parser, bencode);
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 6 &&
-            memcmp(key.data, "pieces", 6) == 0 &&
-            memcmp(dict_path, "info", 10) == 0) {
-          metainfo.pieces = parseString(parser, bencode);
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
-            memcmp(key.data, "length", 6) == 0 &&
-            memcmp(dict_path, "info", 10) == 0) {
-          metainfo.is_single_file = true;
-          metainfo.single_file.length = parseInteger(parser, bencode);
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
-            memcmp(key.data, "length", 6) == 0 &&
-            memcmp(dict_path, "info|files", 10) == 0) {
-          metainfo.is_single_file = false;
-          BencodeValue value = bencode_decode(parser, bencode, dict_path);
-          files[metainfo.multi_file.file_count].length = value.num;
-          continue;
-        }
-
-        if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 4 &&
-            memcmp(key.data, "path", 4) == 0 &&
-            memcmp(dict_path, "info|files", 10) == 0) {
-          metainfo.is_single_file = false;
-
-          // Record where this file's paths start in the flat array
-          usize file_idx = metainfo.multi_file.file_count;
-          files[file_idx].path = &paths[parser->path_cursor];
-
-          // Manually consume the list 'l...e' inline, no recursive decode
-          assert(bencode.data[parser->cursor] == 'l');
-          parser->cursor++;
-          while (bencode.data[parser->cursor] != 'e') {
-            paths[parser->path_cursor++] = parseString(parser, bencode);
-            files[file_idx].path_count++;
-          }
-          parser->cursor++;
-          metainfo.multi_file.file_count++;
-          continue;
-        }
-
-        if (is_at_root && key.data[0] == 'i' && key.len == 4 &&
-            memcmp(key.data, "info", 4) == 0) {
-          u8 hash[SHA_DIGEST_LENGTH];
-          usize start = parser->cursor;
-          bencode_decode(parser, bencode, "info");
-          usize end = parser->cursor - 1;
-          assert(bencode.data[start] == 'd');
-          assert(bencode.data[end] == 'e');
-          if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - start) !=
-              0)
-            exit(1);
-
-          for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-            sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
-          }
-          continue;
-        }
-
-        char new_key_path[128] = {0};
-        usize len = strlen(dict_path);
-        snprintf(new_key_path, len + 1 + key.len + 1, "%s|%s", dict_path,
-                 key.data);
-        printf("-> %s\n", new_key_path);
-
-        BencodeValue value = bencode_decode(parser, bencode, new_key_path);
-        (void)value;
-        continue;
-      }
-      parser->cursor++;
-      usize dict_end = parser->cursor;
-      BencodeValue value = {0};
-      value.kind = DICT;
-      value.string = (String){.len = dict_end - dict_start,
-                              .data = &bencode.data[dict_start]};
-      return value;
+      BencodeValue v = parseDict(parser, bencode, dict_path);
+      return v;
     }
 
     case 'l': {
-      parser->cursor++;
-      usize start = parser->cursor;
-      // printf("LIST: [");
-      while (bencode.data[parser->cursor] != 'e') {
-        BencodeValue v = bencode_decode(parser, bencode, dict_path);
-        (void)v;
-        // switch (v.kind) {
-        // case STRING:
-        // case LIST:
-        // case DICT:
-        //   printf("%.*s,", (u32)v.string.len, v.string.data);
-        //   break;
-        // case INT:
-        //   printf("%lld,", v.num);
-        //   break;
-        // }
-      }
-      // printf("]");
-      usize end = parser->cursor;
-      parser->cursor++;
-      BencodeValue value = {0};
-      value.kind = LIST;
-      value.string = (String){.len = end - start, .data = &bencode.data[start]};
-      return value;
+      BencodeValue v = parseList(parser, bencode, dict_path);
+      return v;
     }
     case 'e':
       parser->cursor++;
