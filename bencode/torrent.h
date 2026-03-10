@@ -30,6 +30,8 @@ typedef struct {
   // piece at the corresponding index.
   String pieces;
 
+  char info_hash[20 * 2 + 1];
+
   // Discriminator: true for single file, false for multi-file
   bool is_single_file;
 

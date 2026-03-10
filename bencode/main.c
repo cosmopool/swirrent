@@ -1,12 +1,14 @@
-#include "bencode.h"
+#include <assert.h>
+#include <curl/curl.h>
+#include <errno.h>
 #include <stdio.h>
+
+#include "bencode.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
 #include "teeny-sha1.c"
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
-
-#include <errno.h>
 
 #define SHA_DIGEST_LENGTH 20
 
@@ -14,6 +16,35 @@
 static String paths[2048 * 4] = {0};
 static TorrentFile files[2048] = {0};
 static TorrentMetainfo metainfo = {0};
+
+void printMetainfo() {
+  printf("meta info\n");
+  printf("announce: ");
+  mcl_printString(metainfo.announce);
+  printf("\n");
+  printf("name: ");
+  mcl_printString(metainfo.name);
+  printf("\n");
+  printf("info hash: %s \n", metainfo.info_hash);
+  if (metainfo.is_single_file) {
+    printf("length: %ldM\n", metainfo.single_file.length / 1024 / 1024);
+  } else {
+    metainfo.multi_file.files = (TorrentFile *)&files;
+    if (metainfo.multi_file.file_count > 0) printf("files:\n");
+    for (u32 i = 0; i < metainfo.multi_file.file_count; i++) {
+      TorrentFile file = files[i];
+      printf(" length: %ld\n", file.length);
+      printf(" path:\n");
+      for (u32 j = 0; j < file.path_count; j++) {
+        String path = file.path[j];
+        printf("  - %.*s\n", (u32)path.len, path.data);
+      }
+    }
+  }
+  printf("piece length: %ldK\n", metainfo.piece_length / 1024);
+  printf("pieces: %lu", metainfo.pieces.len / 20);
+  printf("\n");
+}
 
 void printFromTo(usize start, usize end, const char *str) {
   char buff[1024] = {0};
@@ -37,6 +68,7 @@ void printStringSlice(usize len, const char *str_c) {
 
 String parseString(BencodeParser *parser, String bencode) {
   char *colon_ptr;
+  errno = 0;
   isize str_len = strtol(&bencode.data[parser->cursor], &colon_ptr, 10);
   if (errno) {
     char *msg = "[BAD STRING] Not able to decode string lenght: %s\n";
@@ -104,6 +136,15 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
       while (bencode.data[parser->cursor] != 'e') {
         String key = parseString(parser, bencode);
         bool is_at_root = dict_path[0] == '\0';
+
+        if (is_at_root && key.data[0] == 'f' && key.len == 14 &&
+            memcmp(key.data, "failure reason", 14) == 0) {
+          BencodeValue value = bencode_decode(parser, bencode, dict_path);
+          assert(value.kind == STRING);
+          printf("failure reason: %.*s\n", (u32)value.string.len,
+                 value.string.data);
+          return value;
+        }
 
         if (is_at_root && key.data[0] == 'a' && key.len == 13 &&
             memcmp(key.data, "announce-list", 13) == 0) {
@@ -189,21 +230,16 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
               0)
             exit(1);
 
-          char sha1string[SHA_DIGEST_LENGTH * 2 + 1];
           for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-            sprintf(&sha1string[i * 2], "%02x", (u32)hash[i]);
+            sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
           }
-          printf("Info hash: %s \n", sha1string);
           continue;
         }
 
-        for (u32 i = 0; i < key.len; i++) {
-          parser->tmp_buff[i] = key.data[i];
-        }
-        parser->tmp_buff[key.len] = '\0';
-
         char new_key_path[128] = {0};
-        sprintf(new_key_path, "%s|%s", dict_path, parser->tmp_buff);
+        usize len = strlen(dict_path);
+        snprintf(new_key_path, len + 1 + key.len + 1, "%s|%s", dict_path,
+                 key.data);
         printf("-> %s\n", new_key_path);
 
         BencodeValue value = bencode_decode(parser, bencode, new_key_path);
@@ -257,8 +293,23 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
   return value;
 }
 
+// simple write callback
+usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
+  // printf("RESPONSE: %s\n", ptr);
+  String *r = userdata;
+  memcpy((void *)r->data + r->len, ptr, size * nmemb);
+  r->len += size * nmemb;
+  return size * nmemb;
+}
+
 i32 main(i32 argc, char **argv) {
-  FILE *file_ptr = fopen("e.torrent", "rb");
+
+  if (!argv[1]) {
+    printf("a torrent file must be provided as argument");
+    exit(1);
+  }
+  printf("FILE: %s\n", argv[1]);
+  FILE *file_ptr = fopen(argv[1], "rb");
   if (file_ptr == NULL) {
     perror("fopen");
     exit(1);
@@ -286,31 +337,59 @@ i32 main(i32 argc, char **argv) {
   assert(bencode.data[parser.cursor] == 'd');
   bencode_decode(&parser, bencode, "");
 
-  printf("meta info\n");
-  printf("announce: ");
-  mcl_printString(metainfo.announce);
-  printf("\n");
-  printf("name: ");
-  mcl_printString(metainfo.name);
-  printf("\n");
-  if (metainfo.is_single_file) {
-    printf("length: %ldM\n", metainfo.single_file.length / 1024 / 1024);
-  } else {
+  if (!metainfo.is_single_file) {
     metainfo.multi_file.files = (TorrentFile *)&files;
-    if (metainfo.multi_file.file_count > 0) printf("files:\n");
-    for (u32 i = 0; i < metainfo.multi_file.file_count; i++) {
-      TorrentFile file = files[i];
-      printf(" length: %ld\n", file.length);
-      printf(" path:\n");
-      for (u32 j = 0; j < file.path_count; j++) {
-        String path = file.path[j];
-        printf("  - %.*s\n", (u32)path.len, path.data);
-      }
-    }
   }
-  printf("piece length: %ldK\n", metainfo.piece_length / 1024);
-  printf("pieces: %lu", metainfo.pieces.len / 20);
-  printf("\n");
+  if (argv[2] && memcmp(&argv[2], "-v", 2)) {
+    printMetainfo();
+  }
 
-  return 0;
+  u32 result = 0;
+  CURL *curl = curl_easy_init();
+  if (curl) {
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+    char url[1024] = {0};
+    snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
+    if (url[metainfo.announce.len] == '\0') url[metainfo.announce.len] = '?';
+    char encoded_hash[61] = {0};
+    usize offset = 0;
+    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+      offset +=
+          sprintf(encoded_hash + offset, "%%%02x", (u8)metainfo.info_hash[i]);
+    }
+    sprintf(url, "%sinfo_hash=%s", url, encoded_hash);
+    sprintf(url, "%s&peer_id=%s", url, "k492jal1dkfj9oa3e8se");
+    sprintf(url, "%s&port=%s", url, "6881");
+    sprintf(url, "%s&uploaded=%s", url, "0");
+    sprintf(url, "%s&downloaded=%s", url, "0");
+    if (metainfo.is_single_file) {
+      sprintf(url, "%s&left=%ld", url, metainfo.single_file.length);
+    } else {
+      usize len = 0;
+      for (u32 i = 0; i < metainfo.multi_file.file_count; i++) {
+        len += metainfo.multi_file.files[i].length;
+      }
+      sprintf(url, "%s&left=%ld", url, len);
+    }
+    sprintf(url, "%s&event=%s", url, "empty");
+
+    char data[1024] = {0};
+    String resp = {.len = 0, .data = data};
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+
+    result = curl_easy_perform(curl);
+    if (result != CURLE_OK)
+      fprintf(stderr, "curl_easy_perform() failed: %s\n",
+              curl_easy_strerror(result));
+
+    BencodeParser p = {0};
+    bencode_decode(&p, resp, "");
+
+    curl_easy_cleanup(curl);
+  }
+  curl_global_cleanup();
+  return (int)result;
 }
