@@ -127,24 +127,13 @@ isize decodeInteger(BencodeParser *parser, String bencode) {
 }
 
 BencodeValue decodeList(BencodeParser *parser, String bencode) {
+  assert(IS_LIST);
   parser->cursor++;
   usize start = parser->cursor;
-  // printf("LIST: [");
   while (bencode.data[parser->cursor] != 'e') {
     BencodeValue v = bencodeDecode(parser, bencode);
     (void)v;
-    // switch (v.kind) {
-    // case STRING:
-    // case LIST:
-    // case DICT:
-    //   printf("%.*s,", (u32)v.string.len, v.string.data);
-    //   break;
-    // case INT:
-    //   printf("%lld,", v.num);
-    //   break;
-    // }
   }
-  // printf("]");
   usize end = parser->cursor;
   parser->cursor++;
   BencodeValue value = {0};
@@ -154,6 +143,7 @@ BencodeValue decodeList(BencodeParser *parser, String bencode) {
 }
 
 BencodeValue decodeDict(BencodeParser *parser, String bencode) {
+  assert(IS_DICT);
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
@@ -261,6 +251,8 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
 };
 
 BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
+  assert(IS_DICT);
+
   u8 hash[SHA_DIGEST_LENGTH];
   usize start = parser->cursor;
   parser->cursor++;
@@ -329,6 +321,8 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
 
 BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
                                    TorrentTrackerResponse *tracker_resp) {
+  assert(IS_DICT);
+
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
