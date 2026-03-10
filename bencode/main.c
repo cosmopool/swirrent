@@ -2,6 +2,7 @@
 #include <curl/curl.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "bencode.h"
 #define STRING_IMPLEMENTATION
@@ -10,9 +11,17 @@
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
+#define IS_LIST bencode.data[parser->cursor] == 'l'
+#define IS_DICT bencode.data[parser->cursor] == 'd'
+
+#define STRING_MATCHES(key, string)                                            \
+  (string.data[0] == (key)[0] && string.len == (sizeof(key) - 1) &&            \
+   memcmp(string.data, key, sizeof(key) - 1) == 0)
+
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
+static String trackers_url[2048 * 4] = {0};
 static String paths[2048 * 4] = {0};
 static TorrentFile files[2048] = {0};
 static TorrentMetainfo metainfo = {0};
@@ -111,13 +120,12 @@ isize parseInteger(BencodeParser *parser, String bencode) {
   return integer;
 }
 
-BencodeValue parseList(BencodeParser *parser, String bencode,
-                       const char *dict_path) {
+BencodeValue parseList(BencodeParser *parser, String bencode) {
   parser->cursor++;
   usize start = parser->cursor;
   // printf("LIST: [");
   while (bencode.data[parser->cursor] != 'e') {
-    BencodeValue v = bencode_decode(parser, bencode, dict_path);
+    BencodeValue v = bencode_decode(parser, bencode);
     (void)v;
     // switch (v.kind) {
     // case STRING:
@@ -139,118 +147,63 @@ BencodeValue parseList(BencodeParser *parser, String bencode,
   return value;
 }
 
-BencodeValue parseDict(BencodeParser *parser, String bencode,
-                       const char *dict_path) {
+BencodeValue parseDict(BencodeParser *parser, String bencode) {
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
     String key = parseString(parser, bencode);
-    bool is_at_root = dict_path[0] == '\0';
 
-    if (is_at_root && key.data[0] == 'f' && key.len == 14 &&
-        memcmp(key.data, "failure reason", 14) == 0) {
-      BencodeValue value = bencode_decode(parser, bencode, dict_path);
+    if (STRING_MATCHES("failure reason", key)) {
+      BencodeValue value = bencode_decode(parser, bencode);
       assert(value.kind == STRING);
       printf("failure reason: %.*s\n", (u32)value.string.len,
              value.string.data);
       return value;
     }
 
-    if (is_at_root && key.data[0] == 'a' && key.len == 13 &&
-        memcmp(key.data, "announce-list", 13) == 0) {
-      BencodeValue v = bencode_decode(parser, bencode, dict_path);
+    if (STRING_MATCHES("announce-list", key)) {
+      BencodeValue v = bencode_decode(parser, bencode);
       (void)v;
       continue;
     }
 
-    if (is_at_root && key.data[0] == 'a' && key.len == 8 &&
-        memcmp(key.data, "announce", 8) == 0) {
+    if (STRING_MATCHES("announce", key)) {
       metainfo.announce = parseString(parser, bencode);
       continue;
     }
 
-    if (dict_path[0] == 'i' && key.data[0] == 'n' && key.len == 4 &&
-        memcmp(key.data, "name", 4) == 0 &&
-        memcmp(dict_path, "info", 10) == 0) {
-      metainfo.name = parseString(parser, bencode);
+    if (STRING_MATCHES("info", key)) {
+      decodeInfoDict(parser, bencode);
       continue;
     }
 
-    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 12 &&
-        memcmp(key.data, "piece length", 12) == 0 &&
-        memcmp(dict_path, "info", 10) == 0) {
-      metainfo.piece_length = parseInteger(parser, bencode);
-      continue;
-    }
-
-    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 6 &&
-        memcmp(key.data, "pieces", 6) == 0 &&
-        memcmp(dict_path, "info", 10) == 0) {
-      metainfo.pieces = parseString(parser, bencode);
-      continue;
-    }
-
-    if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
-        memcmp(key.data, "length", 6) == 0 &&
-        memcmp(dict_path, "info", 10) == 0) {
-      metainfo.is_single_file = true;
-      metainfo.single_file.length = parseInteger(parser, bencode);
-      continue;
-    }
-
-    if (dict_path[0] == 'i' && key.data[0] == 'l' && key.len == 6 &&
-        memcmp(key.data, "length", 6) == 0 &&
-        memcmp(dict_path, "info|files", 10) == 0) {
-      metainfo.is_single_file = false;
-      BencodeValue value = bencode_decode(parser, bencode, dict_path);
-      files[metainfo.multi_file.file_count].length = value.num;
-      continue;
-    }
-
-    if (dict_path[0] == 'i' && key.data[0] == 'p' && key.len == 4 &&
-        memcmp(key.data, "path", 4) == 0 &&
-        memcmp(dict_path, "info|files", 10) == 0) {
-      metainfo.is_single_file = false;
-
-      // Record where this file's paths start in the flat array
-      usize file_idx = metainfo.multi_file.file_count;
-      files[file_idx].path = &paths[parser->path_cursor];
-
-      // Manually consume the list 'l...e' inline, no recursive decode
-      assert(bencode.data[parser->cursor] == 'l');
+    if (STRING_MATCHES("url-list", key)) {
       parser->cursor++;
-      while (bencode.data[parser->cursor] != 'e') {
-        paths[parser->path_cursor++] = parseString(parser, bencode);
-        files[file_idx].path_count++;
-      }
-      parser->cursor++;
-      metainfo.multi_file.file_count++;
-      continue;
-    }
-
-    if (is_at_root && key.data[0] == 'i' && key.len == 4 &&
-        memcmp(key.data, "info", 4) == 0) {
-      u8 hash[SHA_DIGEST_LENGTH];
+      usize url_list_count = 0;
       usize start = parser->cursor;
-      bencode_decode(parser, bencode, "info");
-      usize end = parser->cursor - 1;
-      assert(bencode.data[start] == 'd');
-      assert(bencode.data[end] == 'e');
-      if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - start) != 0)
-        exit(1);
-
-      for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-        sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+      while (bencode.data[parser->cursor] != 'e') {
+        if (bencode.data[parser->cursor] == 'l') {
+          BencodeValue v = parseList(parser, bencode);
+          assert(v.kind == STRING);
+          trackers_url[url_list_count] = v.string;
+          continue;
+        }
+        BencodeValue v = bencode_decode(parser, bencode);
+        assert(v.kind == STRING);
+        trackers_url[url_list_count] = v.string;
+        url_list_count++;
       }
+      usize end = parser->cursor;
+      parser->cursor++;
+      BencodeValue value = {0};
+      value.kind = LIST;
+      value.string = (String){.len = end - start, .data = &bencode.data[start]};
+      return value;
       continue;
     }
 
-    char new_key_path[128] = {0};
-    usize len = strlen(dict_path);
-    snprintf(new_key_path, len + 1 + key.len + 1, "%s|%s", dict_path, key.data);
-    printf("-> %s\n", new_key_path);
-
-    BencodeValue value = bencode_decode(parser, bencode, new_key_path);
+    printf("-> |%.*s\n", (u32)key.len, key.data);
+    BencodeValue value = bencode_decode(parser, bencode);
     (void)value;
     continue;
   }
@@ -263,8 +216,180 @@ BencodeValue parseDict(BencodeParser *parser, String bencode,
   return value;
 };
 
-BencodeValue bencode_decode(BencodeParser *parser, String bencode,
-                            const char *dict_path) {
+BencodeValue decodeFile(BencodeParser *parser, String bencode) {
+  assert(IS_DICT);
+
+  usize start = parser->cursor;
+  parser->cursor++;
+  while (bencode.data[parser->cursor] != 'e') {
+    String key = parseString(parser, bencode);
+
+    if (STRING_MATCHES("length", key)) {
+      files[metainfo.multi_file.file_count].length =
+          parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("path", key)) {
+      // Record where this file's paths start in the flat array
+      usize file_idx = metainfo.multi_file.file_count;
+      files[file_idx].path = &paths[parser->path_cursor];
+
+      // Manually consume the list 'l...e' inline, no recursive decode
+      assert(IS_LIST);
+      parser->cursor++;
+      while (bencode.data[parser->cursor] != 'e') {
+        paths[parser->path_cursor++] = parseString(parser, bencode);
+        files[file_idx].path_count++;
+      }
+      parser->cursor++;
+      metainfo.multi_file.file_count++;
+      continue;
+    }
+  }
+  parser->cursor++;
+  usize end = parser->cursor;
+  BencodeValue value = {0};
+  value.kind = DICT;
+  value.string =
+      (String){.len = end - start + 1, .data = &bencode.data[start + 1]};
+  return value;
+};
+
+BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
+  u8 hash[SHA_DIGEST_LENGTH];
+  usize start = parser->cursor;
+  parser->cursor++;
+  while (bencode.data[parser->cursor] != 'e') {
+    String key = parseString(parser, bencode);
+
+    if (STRING_MATCHES("name", key)) {
+      metainfo.name = parseString(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("piece length", key)) {
+      metainfo.piece_length = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("pieces", key)) {
+      metainfo.pieces = parseString(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("length", key)) {
+      assert(metainfo.multi_file.file_count == 0);
+      assert(!metainfo.multi_file.files);
+      metainfo.is_single_file = true;
+      metainfo.single_file.length = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("files", key)) {
+      assert(metainfo.single_file.length == 0);
+      metainfo.is_single_file = false;
+
+      assert(IS_LIST);
+      parser->cursor++;
+      usize start = parser->cursor;
+      while (bencode.data[parser->cursor] != 'e') {
+        (void)decodeFile(parser, bencode);
+      }
+      usize end = parser->cursor;
+      parser->cursor++;
+      continue;
+    }
+
+    printf("-> info|%.*s\n", (u32)key.len, key.data);
+    BencodeValue value = bencode_decode(parser, bencode);
+    (void)value;
+    continue;
+  }
+  parser->cursor++;
+  usize end = parser->cursor;
+  assert(bencode.data[start] == 'd');
+  assert(bencode.data[end - 1] == 'e');
+  if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - 1 - start) != 0)
+    exit(1);
+
+  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+    sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+  }
+  BencodeValue value = {0};
+  value.kind = DICT;
+  value.string =
+      (String){.len = end - start + 1, .data = &bencode.data[start + 1]};
+  return value;
+};
+
+BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
+                                   TorrentTrackerResponse *tracker_resp) {
+  parser->cursor++;
+  usize dict_start = parser->cursor;
+  while (bencode.data[parser->cursor] != 'e') {
+    String key = parseString(parser, bencode);
+
+    if (STRING_MATCHES("failure reason", key)) {
+      BencodeValue value = bencode_decode(parser, bencode);
+      assert(value.kind == STRING);
+      printf("failure reason: %.*s\n", (u32)value.string.len,
+             value.string.data);
+      return value;
+    }
+
+    if (STRING_MATCHES("complete", key)) {
+      tracker_resp->complete = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("downloaded", key)) {
+      tracker_resp->downloaded = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("incomplete", key)) {
+      tracker_resp->incomplete = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("interval", key)) {
+      tracker_resp->interval = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("min interval", key)) {
+      tracker_resp->min_interval = parseInteger(parser, bencode);
+      continue;
+    }
+
+    if (STRING_MATCHES("warning message", key)) {
+      tracker_resp->warning_message = parseString(parser, bencode);
+      continue;
+    }
+
+    // if (STRING_MATCHES("length", key)) {
+    //   metainfo.is_single_file = false;
+    //   files[metainfo.multi_file.file_count].length =
+    //       parseInteger(parser, bencode);
+    //   continue;
+    // }
+
+    printf("-> |%.*s\n", (u32)key.len, key.data);
+    BencodeValue value = bencode_decode(parser, bencode);
+    (void)value;
+    continue;
+  }
+  parser->cursor++;
+  usize dict_end = parser->cursor;
+  BencodeValue value = {0};
+  value.kind = DICT;
+  value.string =
+      (String){.len = dict_end - dict_start, .data = &bencode.data[dict_start]};
+  return value;
+};
+
+BencodeValue bencode_decode(BencodeParser *parser, String bencode) {
   if (bencode.len <= 0) {
     fprintf(stderr, "Empty data! Nothing to parse.\n");
     exit(1);
@@ -283,12 +408,12 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
     }
 
     case 'd': {
-      BencodeValue v = parseDict(parser, bencode, dict_path);
+      BencodeValue v = parseDict(parser, bencode);
       return v;
     }
 
     case 'l': {
-      BencodeValue v = parseList(parser, bencode, dict_path);
+      BencodeValue v = parseList(parser, bencode);
       return v;
     }
     case 'e':
@@ -305,7 +430,7 @@ BencodeValue bencode_decode(BencodeParser *parser, String bencode,
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
-  // printf("RESPONSE: %s\n", ptr);
+  printf("RESPONSE: %s\n", ptr);
   String *r = userdata;
   memcpy((void *)r->data + r->len, ptr, size * nmemb);
   r->len += size * nmemb;
@@ -345,7 +470,7 @@ i32 main(i32 argc, char **argv) {
 
   BencodeParser parser = {0};
   assert(bencode.data[parser.cursor] == 'd');
-  bencode_decode(&parser, bencode, "");
+  bencode_decode(&parser, bencode);
 
   if (!metainfo.is_single_file) {
     metainfo.multi_file.files = (TorrentFile *)&files;
@@ -353,6 +478,7 @@ i32 main(i32 argc, char **argv) {
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
     printMetainfo();
   }
+  return 0;
 
   u32 result = 0;
   CURL *curl = curl_easy_init();
@@ -360,7 +486,10 @@ i32 main(i32 argc, char **argv) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     char url[1024] = {0};
-    snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
+    if (metainfo.announce.len == 0)
+      snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
+    else
+      snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
     if (url[metainfo.announce.len] == '\0') url[metainfo.announce.len] = '?';
     char encoded_hash[61] = {0};
     usize offset = 0;
@@ -396,7 +525,18 @@ i32 main(i32 argc, char **argv) {
               curl_easy_strerror(result));
 
     BencodeParser p = {0};
-    bencode_decode(&p, resp, "");
+    TorrentTrackerResponse t_resp = {0};
+    decodeTrackerResponse(&p, resp, &t_resp);
+    printf("\nTRACKER RESPONSE\n");
+    printf("interval: %ld\n", t_resp.interval);
+    printf("min interval: %ld\n", t_resp.min_interval);
+    printf("complete: %ld\n", t_resp.complete);
+    printf("incomplete: %ld\n", t_resp.incomplete);
+    printf("downloaded: %ld\n", t_resp.downloaded);
+    printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len,
+           t_resp.warning_message.data);
+    printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len,
+           t_resp.failure_reason.data);
 
     curl_easy_cleanup(curl);
   }
