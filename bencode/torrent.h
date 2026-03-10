@@ -25,6 +25,8 @@ typedef struct TorrentMetainfo {
   // = 256 K (BitTorrent prior to version 3.2 uses 2 20 = 1 M as default).
   usize piece_length;
 
+  usize trackers_count;
+
   // pieces maps to a string whose length is a multiple of 20. It is to be
   // subdivided into strings of length 20, each of which is the SHA1 hash of the
   // piece at the corresponding index.

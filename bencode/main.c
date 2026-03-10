@@ -35,9 +35,17 @@ void printMetainfo() {
   mcl_printString(metainfo.name);
   printf("\n");
   printf("info hash: %s \n", metainfo.info_hash);
-  if (metainfo.is_single_file) {
+  printf("piece length: %ldK\n", metainfo.piece_length / 1024);
+  printf("pieces: %lu\n", metainfo.pieces.len / 20);
+  if (metainfo.is_single_file)
     printf("length: %ldM\n", metainfo.single_file.length / 1024 / 1024);
-  } else {
+
+  for (u32 i = 0; i < metainfo.trackers_count; i++) {
+    mcl_printString(trackers_url[i]);
+    printf("\n");
+  }
+
+  if (!metainfo.is_single_file) {
     metainfo.multi_file.files = (TorrentFile *)&files;
     if (metainfo.multi_file.file_count > 0) printf("files:\n");
     for (u32 i = 0; i < metainfo.multi_file.file_count; i++) {
@@ -50,8 +58,6 @@ void printMetainfo() {
       }
     }
   }
-  printf("piece length: %ldK\n", metainfo.piece_length / 1024);
-  printf("pieces: %lu", metainfo.pieces.len / 20);
   printf("\n");
 }
 
@@ -161,12 +167,6 @@ BencodeValue parseDict(BencodeParser *parser, String bencode) {
       return value;
     }
 
-    if (STRING_MATCHES("announce-list", key)) {
-      BencodeValue v = bencode_decode(parser, bencode);
-      (void)v;
-      continue;
-    }
-
     if (STRING_MATCHES("announce", key)) {
       metainfo.announce = parseString(parser, bencode);
       continue;
@@ -177,28 +177,34 @@ BencodeValue parseDict(BencodeParser *parser, String bencode) {
       continue;
     }
 
-    if (STRING_MATCHES("url-list", key)) {
+    if (STRING_MATCHES("url-list", key) ||
+        STRING_MATCHES("announce-list", key)) {
+      assert(IS_LIST);
       parser->cursor++;
-      usize url_list_count = 0;
       usize start = parser->cursor;
       while (bencode.data[parser->cursor] != 'e') {
         if (bencode.data[parser->cursor] == 'l') {
-          BencodeValue v = parseList(parser, bencode);
-          assert(v.kind == STRING);
-          trackers_url[url_list_count] = v.string;
+          parser->cursor++;
+          usize start = parser->cursor;
+          while (bencode.data[parser->cursor] != 'e') {
+            trackers_url[metainfo.trackers_count] =
+                parseString(parser, bencode);
+            metainfo.trackers_count++;
+          }
+          usize end = parser->cursor;
+          parser->cursor++;
           continue;
         }
         BencodeValue v = bencode_decode(parser, bencode);
         assert(v.kind == STRING);
-        trackers_url[url_list_count] = v.string;
-        url_list_count++;
+        trackers_url[metainfo.trackers_count] = v.string;
+        metainfo.trackers_count++;
       }
       usize end = parser->cursor;
       parser->cursor++;
       BencodeValue value = {0};
       value.kind = LIST;
       value.string = (String){.len = end - start, .data = &bencode.data[start]};
-      return value;
       continue;
     }
 
@@ -367,13 +373,6 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
       tracker_resp->warning_message = parseString(parser, bencode);
       continue;
     }
-
-    // if (STRING_MATCHES("length", key)) {
-    //   metainfo.is_single_file = false;
-    //   files[metainfo.multi_file.file_count].length =
-    //       parseInteger(parser, bencode);
-    //   continue;
-    // }
 
     printf("-> |%.*s\n", (u32)key.len, key.data);
     BencodeValue value = bencode_decode(parser, bencode);
