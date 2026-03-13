@@ -375,27 +375,30 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
 char *bencodeEncodeDictKey(char *key, char *dest) {
   char tmp[128] = {0};
   usize len = strnlen(key, ULONG_MAX);
-  snprintf(tmp, 128, "%ld:%s", len, key);
-  strncat(dest, tmp, 128);
-  usize last_pos = strnlen(dest, ULONG_MAX);
-  return dest + last_pos;
+  i32 encoded_len = snprintf(tmp, 128, "%ld:", len);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  dest += encoded_len;
+  memcpy(dest, key, len);
+  return dest + len;
 }
 
 char *bencodeEncodeInteger(usize integer, char *dest) {
   char tmp[64] = {0};
-  snprintf(tmp, 64, "i%lde", integer);
-  strncat(dest, tmp, 64);
-  usize last_pos = strnlen(dest, ULONG_MAX);
-  return dest + last_pos;
+  i32 encoded_len = snprintf(tmp, 64, "i%lde", integer);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  return dest + encoded_len;
 }
 
 char *bencodeEncodeString(String string, char *dest) {
   char tmp[64] = {0};
-  snprintf(tmp, 64, "%ld:", string.len);
-  strncat(dest, tmp, 64);
-  strncat(dest, string.data, string.len);
-  usize last_pos = strnlen(dest, ULONG_MAX);
-  return dest + last_pos;
+  i32 encoded_len = snprintf(tmp, 64, "%ld:", string.len);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  dest += encoded_len;
+  memcpy(dest, string.data, string.len);
+  return dest + string.len;
 }
 
 char *bencodeEncodeDict(char *dest) {
@@ -458,7 +461,7 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
   buff_slice = bencodeEncodeClose(buff_slice); // info dict
   usize len = buff_slice - buff;
 
-  if (sha1digest(hash, NULL, (u8 *)&buff_slice, len) != 0) {
+  if (sha1digest(hash, NULL, (u8 *)buff, len) != 0) {
     printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!",
            __FILE__, __LINE__);
     exit(1);
