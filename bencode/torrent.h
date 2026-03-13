@@ -5,9 +5,9 @@
 #include <stdbool.h>
 
 typedef struct TorrentFile {
-  String *path; // Array of path components
   usize length;
   usize path_count;
+  String *path; // Array of path components
 } TorrentFile;
 
 typedef struct TorrentInfoFiles {
@@ -31,6 +31,11 @@ typedef struct TorrentInfo {
   // = 256 K (BitTorrent prior to version 3.2 uses 2 20 = 1 M as default).
   usize piece_length;
 
+  // pieces maps to a string whose length is a multiple of 20. It is to be
+  // subdivided into strings of length 20, each of which is the SHA1 hash of the
+  // piece at the corresponding index.
+  String pieces;
+
   union {
     // length - The length of the file, in bytes.
     usize length;
@@ -44,11 +49,6 @@ typedef struct TorrentMetainfo {
   String announce;
 
   usize trackers_count;
-
-  // pieces maps to a string whose length is a multiple of 20. It is to be
-  // subdivided into strings of length 20, each of which is the SHA1 hash of the
-  // piece at the corresponding index.
-  String pieces;
 
   char info_hash[20 * 2 + 1];
 
@@ -151,10 +151,10 @@ void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
                           char *hash) {
   usize real_idx = piece_idx * 20;
   for (u32 i = 0; i < 20; i += 4) {
-    hash[i + 0] = metainfo->pieces.data[real_idx + i + 0];
-    hash[i + 1] = metainfo->pieces.data[real_idx + i + 1];
-    hash[i + 2] = metainfo->pieces.data[real_idx + i + 2];
-    hash[i + 3] = metainfo->pieces.data[real_idx + i + 3];
+    hash[i + 0] = metainfo->info.pieces.data[real_idx + i + 0];
+    hash[i + 1] = metainfo->info.pieces.data[real_idx + i + 1];
+    hash[i + 2] = metainfo->info.pieces.data[real_idx + i + 2];
+    hash[i + 3] = metainfo->info.pieces.data[real_idx + i + 3];
   }
 }
 

@@ -36,7 +36,7 @@ void printMetainfo() {
   printf("\n");
   printf("info hash: %s \n", metainfo.info_hash);
   printf("piece length: %ldK\n", metainfo.info.piece_length / 1024);
-  printf("pieces: %lu\n", metainfo.pieces.len / 20);
+  printf("pieces: %lu\n", metainfo.info.pieces.len / 20);
   if (metainfo.info.is_single_file)
     printf("length: %ldM\n", metainfo.info.length / 1024 / 1024);
 
@@ -270,7 +270,7 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
     }
 
     if (STRING_MATCHES("pieces", key)) {
-      metainfo.pieces = decodeString(parser, bencode);
+      metainfo.info.pieces = decodeString(parser, bencode);
       continue;
     }
 
