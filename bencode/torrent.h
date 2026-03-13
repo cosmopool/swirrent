@@ -10,9 +10,15 @@ typedef struct TorrentFile {
   usize path_count;
 } TorrentFile;
 
-typedef struct TorrentMetainfo {
-  // The URL of the tracker.
-  String announce;
+typedef struct TorrentInfoFiles {
+  // files list - array of file dictionaries
+  TorrentFile *files;
+  usize count;
+} TorrentInfoFiles;
+
+typedef struct TorrentInfo {
+  // Discriminator: true for single file, false for multi-file
+  bool is_single_file;
 
   // The name key maps to a UTF-8 encoded string which is the suggested name to
   // save the file (or directory) as. It is purely advisory.
@@ -25,6 +31,18 @@ typedef struct TorrentMetainfo {
   // = 256 K (BitTorrent prior to version 3.2 uses 2 20 = 1 M as default).
   usize piece_length;
 
+  union {
+    // length - The length of the file, in bytes.
+    usize length;
+
+    TorrentInfoFiles multi_files;
+  };
+} TorrentInfo;
+
+typedef struct TorrentMetainfo {
+  // The URL of the tracker.
+  String announce;
+
   usize trackers_count;
 
   // pieces maps to a string whose length is a multiple of 20. It is to be
@@ -34,22 +52,7 @@ typedef struct TorrentMetainfo {
 
   char info_hash[20 * 2 + 1];
 
-  // Discriminator: true for single file, false for multi-file
-  bool is_single_file;
-
-  union {
-    struct {
-      // length - The length of the file, in bytes.
-      usize length;
-    } single_file;
-
-    struct {
-      // files list - array of file dictionaries
-      TorrentFile *files;
-      usize file_count;
-    } multi_file;
-  };
-
+  TorrentInfo info;
 } TorrentMetainfo;
 
 void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
