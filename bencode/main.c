@@ -572,9 +572,20 @@ i32 main(i32 argc, char **argv) {
       snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
     else
       snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
-    if (url[metainfo.announce.len] == '\0') url[metainfo.announce.len] = '?';
-    char encoded_hash[61] = {0};
+    switch (url[metainfo.announce.len - 1]) {
+    case '/':
+      assert(url[metainfo.announce.len] == '\0');
+      url[metainfo.announce.len - 1] = '?';
+      break;
+
+    default:
+      assert(url[metainfo.announce.len] == '\0');
+      url[metainfo.announce.len] = '?';
+      break;
+    }
+
     usize offset = 0;
+    char encoded_hash[61] = {0};
     for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
       offset +=
           sprintf(encoded_hash + offset, "%%%02x", (u8)metainfo.info_hash[i]);
