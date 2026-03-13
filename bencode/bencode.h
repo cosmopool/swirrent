@@ -1,6 +1,7 @@
 #pragma once
 #include "../include/arena.h"
 #include "core.h"
+#include "torrent.h"
 
 #include <stdbool.h>
 
@@ -62,3 +63,4 @@ String decodeString(BencodeParser *parser, String bencode);
 BencodeValue decodeDict(BencodeParser *parser, String bencode);
 BencodeValue decodeList(BencodeParser *parser, String bencode);
 BencodeValue decodeInfoDict(BencodeParser *parser, String bencode);
+void bencodeEncodeInfoSHA1(TorrentInfo info);

@@ -253,7 +253,6 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
 BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
   assert(IS_DICT);
 
-  u8 hash[SHA_DIGEST_LENGTH];
   usize start = parser->cursor;
   parser->cursor++;
   while (bencode.data[parser->cursor] != 'e') {
@@ -306,12 +305,7 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
   usize end = parser->cursor;
   assert(bencode.data[start] == 'd');
   assert(bencode.data[end - 1] == 'e');
-  if (sha1digest(hash, NULL, (u8 *)&bencode.data[start], end - 1 - start) != 0)
-    exit(1);
 
-  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-    sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
-  }
   BencodeValue value = {0};
   value.kind = DICT;
   value.string =
@@ -377,6 +371,105 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
       (String){.len = dict_end - dict_start, .data = &bencode.data[dict_start]};
   return value;
 };
+
+char *bencodeEncodeDictKey(char *key, char *dest) {
+  char tmp[128] = {0};
+  usize len = strnlen(key, ULONG_MAX);
+  snprintf(tmp, 128, "%ld:%s", len, key);
+  strncat(dest, tmp, 128);
+  usize last_pos = strnlen(dest, ULONG_MAX);
+  return dest + last_pos;
+}
+
+char *bencodeEncodeInteger(usize integer, char *dest) {
+  char tmp[64] = {0};
+  snprintf(tmp, 64, "i%lde", integer);
+  strncat(dest, tmp, 64);
+  usize last_pos = strnlen(dest, ULONG_MAX);
+  return dest + last_pos;
+}
+
+char *bencodeEncodeString(String string, char *dest) {
+  char tmp[64] = {0};
+  snprintf(tmp, 64, "%ld:", string.len);
+  strncat(dest, tmp, 64);
+  strncat(dest, string.data, string.len);
+  usize last_pos = strnlen(dest, ULONG_MAX);
+  return dest + last_pos;
+}
+
+char *bencodeEncodeDict(char *dest) {
+  dest[0] = 'd';
+  return dest + 1;
+}
+
+char *bencodeEncodeList(char *dest) {
+  dest[0] = 'l';
+  return dest + 1;
+}
+
+char *bencodeEncodeClose(char *dest) {
+  dest[0] = 'e';
+  dest[1] = '\0';
+  return dest + 1;
+}
+
+#define MAX_LEN 2 * 1025 * 1024
+void bencodeEncodeInfoSHA1(TorrentInfo info) {
+  u8 hash[SHA_DIGEST_LENGTH] = {0};
+  char buff[MAX_LEN] = {0};
+  char *buff_slice = &buff[0];
+
+  buff_slice = bencodeEncodeDict(buff_slice);
+  if (info.is_single_file) {
+    buff_slice = bencodeEncodeDictKey("length", buff_slice);
+    buff_slice = bencodeEncodeInteger(info.length, buff_slice);
+  } else {
+    buff_slice = bencodeEncodeDictKey("files", buff_slice);
+    buff_slice = bencodeEncodeList(buff_slice); // files list
+    for (u32 i = 0; i < info.multi_files.count; i++) {
+      buff_slice = bencodeEncodeDict(buff_slice); // file dict
+
+      TorrentFile *file = info.multi_files.files + i;
+      buff_slice = bencodeEncodeDictKey("length", buff_slice);
+      buff_slice = bencodeEncodeInteger(file->length, buff_slice);
+
+      buff_slice = bencodeEncodeDictKey("path", buff_slice);
+      buff_slice = bencodeEncodeList(buff_slice);
+      for (u32 j = 0; j < file->path_count; j++) {
+        buff_slice = bencodeEncodeString(*(file->path + j), buff_slice);
+      }
+      buff_slice = bencodeEncodeClose(buff_slice); // path list
+
+      buff_slice = bencodeEncodeClose(buff_slice); // file dict
+    }
+    buff_slice = bencodeEncodeClose(buff_slice); // files list
+  }
+
+  buff_slice = bencodeEncodeDictKey("name", buff_slice);
+  buff_slice = bencodeEncodeString(info.name, buff_slice);
+
+  buff_slice = bencodeEncodeDictKey("piece length", buff_slice);
+  buff_slice = bencodeEncodeInteger(info.piece_length, buff_slice);
+
+  buff_slice = bencodeEncodeDictKey("pieces", buff_slice);
+  buff_slice = bencodeEncodeString(info.pieces, buff_slice);
+
+  buff_slice = bencodeEncodeClose(buff_slice); // info dict
+  usize len = buff_slice - buff;
+
+  if (sha1digest(hash, NULL, (u8 *)&buff_slice, len) != 0) {
+    printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!",
+           __FILE__, __LINE__);
+    exit(1);
+  }
+
+  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+    sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+  }
+
+  printf("SHA1: %s\n", metainfo.info_hash);
+}
 
 BencodeValue bencodeDecode(BencodeParser *parser, String bencode) {
   if (bencode.len <= 0) {
@@ -467,7 +560,7 @@ i32 main(i32 argc, char **argv) {
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
     printMetainfo();
   }
-  return 0;
+  bencodeEncodeInfoSHA1(metainfo.info);
 
   u32 result = 0;
   CURL *curl = curl_easy_init();
