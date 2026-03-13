@@ -14,15 +14,15 @@ dap.configurations.c = {
     request = "launch",
     program = function()
       -- os.execute("clang -g -O0 -c -o decoder.o main.c && clang -g -O0 -o decoder decoder.o")
-      os.execute("clang -g -O0 -o decoder main.c")
+      os.execute("clang -g -O0 -lcurl -o decoder main.c")
       return "${workspaceFolder}/decoder"
     end,
     cwd = "${workspaceFolder}",
     stopOnEntry = false,
-    -- args = function()
-    --   local file = vim.fn.input("Path to binary file to decode: ", vim.fn.getcwd() .. "/", "file")
-    --   return { file }
-    -- end,
+    args = function()
+      local file = vim.fn.input("Path to torrent file to decode: ", vim.fn.getcwd() .. "/", "file")
+      return { file }
+    end,
     externalConsole = false, -- Critical for seeing output in nvim
     runInTerminal = false,
     MIMode = 'gdb',
