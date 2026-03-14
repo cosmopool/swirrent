@@ -64,7 +64,7 @@ void printMetainfo() {
 
 void printFromTo(usize start, usize end, const char *str) {
   char buff[1024] = {0};
-  for (i32 i = 0; i < end - start; i++) {
+  for (u32 i = 0; i < end - start; i++) {
     if (str[start + i] == '\0') break;
     buff[i] = str[start + i];
   }
@@ -74,7 +74,7 @@ void printFromTo(usize start, usize end, const char *str) {
 void printStringSlice(usize len, const char *str_c) {
   char buff[1024] = {0};
   String string = {.len = len, .data = str_c};
-  for (i32 i = 0; i < string.len; i++) {
+  for (u32 i = 0; i < string.len; i++) {
     if (string.data[i] == '\0') break;
     buff[i] = string.data[i];
   }
@@ -91,7 +91,7 @@ String decodeString(BencodeParser *parser, String bencode) {
     fprintf(stderr, msg, strerror(errno));
     exit(1);
   }
-  assert(bencode.len - parser->cursor > str_len);
+  if (str_len > 0) assert(bencode.len - parser->cursor > (usize)str_len);
 
   BencodeValue value = {
       .kind = STRING,
@@ -174,13 +174,11 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
       while (bencode.data[parser->cursor] != 'e') {
         if (bencode.data[parser->cursor] == 'l') {
           parser->cursor++;
-          usize start = parser->cursor;
           while (bencode.data[parser->cursor] != 'e') {
             trackers_url[metainfo.trackers_count] =
                 decodeString(parser, bencode);
             metainfo.trackers_count++;
           }
-          usize end = parser->cursor;
           parser->cursor++;
           continue;
         }
@@ -288,11 +286,9 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
 
       assert(IS_LIST);
       parser->cursor++;
-      usize start = parser->cursor;
       while (bencode.data[parser->cursor] != 'e') {
         (void)decodeFile(parser, bencode);
       }
-      usize end = parser->cursor;
       parser->cursor++;
       continue;
     }
@@ -542,6 +538,7 @@ usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
 }
 
 i32 main(i32 argc, char **argv) {
+  (void)argc;
 
   if (!argv[1]) {
     printf("a torrent file must be provided as argument");
@@ -563,7 +560,7 @@ i32 main(i32 argc, char **argv) {
   char *file_content = (char *)malloc(file_length * sizeof(char));
   fread(file_content, file_length, 1, file_ptr);
   fclose(file_ptr);
-  printf("FILE SIZE: %luK\n", file_length / 1024);
+  printf("FILE SIZE: %lluK\n", file_length / 1024);
 
   String bencode = {
       .len = file_length,

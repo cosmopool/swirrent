@@ -13,8 +13,7 @@ dap.configurations.c = {
     type = "lldb",
     request = "launch",
     program = function()
-      -- os.execute("clang -g -O0 -c -o decoder.o main.c && clang -g -O0 -o decoder decoder.o")
-      os.execute("clang -g -O0 -lcurl -o decoder main.c")
+      os.execute("clang -g -O0 -Wall -Werror -Wcast-align -Wunreachable-code -lcurl -o decoder main.c")
       return "${workspaceFolder}/decoder"
     end,
     cwd = "${workspaceFolder}",
