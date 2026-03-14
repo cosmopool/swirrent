@@ -119,7 +119,7 @@ typedef struct TorrentTracker {
 
 typedef struct TorrentPeer {
   String peer_id;
-  String ip;
+  u32 ip;
   u16 port;
 } TorrentPeer;
 

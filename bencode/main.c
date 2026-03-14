@@ -24,6 +24,7 @@
 static String trackers_url[2048 * 4] = {0};
 static String paths[2048 * 4] = {0};
 static TorrentFile files[2048] = {0};
+static TorrentPeer peers[2048] = {0};
 static TorrentMetainfo metainfo = {0};
 
 void printMetainfo() {
@@ -353,6 +354,24 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
       continue;
     }
 
+    if (STRING_MATCHES("peers6", key)) {
+      String peers_str = decodeString(parser, bencode);
+      for (u32 i = 0; i < peers_str.len / 6; i++) {
+        usize stride = i * 6;
+        u32 ip = 0;
+        ip |= ((u32)peers_str.data[stride + 0] << 24);
+        ip |= ((u32)peers_str.data[stride + 1] << 16);
+        ip |= ((u32)peers_str.data[stride + 2] << 8);
+        ip |= ((u32)peers_str.data[stride + 3] << 0);
+        u16 port = 0;
+        port |= ((u16)peers_str.data[stride + 4] << 8);
+        port |= ((u16)peers_str.data[stride + 5] << 0);
+        tracker_resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
+        tracker_resp->peer_count++;
+      }
+      continue;
+    }
+
     if (STRING_MATCHES("warning message", key)) {
       tracker_resp->warning_message = decodeString(parser, bencode);
       continue;
@@ -571,6 +590,7 @@ i32 main(i32 argc, char **argv) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     char url[1024] = {0};
+    metainfo.announce = trackers_url[6];
     if (metainfo.announce.len == 0)
       snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
     else
@@ -607,7 +627,8 @@ i32 main(i32 argc, char **argv) {
       }
       sprintf(url, "%s&left=%ld", url, len);
     }
-    sprintf(url, "%s&event=%s", url, "empty");
+    // sprintf(url, "%s&event=%s", url, "empty");
+    sprintf(url, "%s&compact=1", url);
 
     char data[1024] = {0};
     String resp = {.len = 0, .data = data};
@@ -622,6 +643,7 @@ i32 main(i32 argc, char **argv) {
 
     BencodeParser p = {0};
     TorrentTrackerResponse t_resp = {0};
+    t_resp.peers = peers;
     decodeTrackerResponse(&p, resp, &t_resp);
     printf("\nTRACKER RESPONSE\n");
     printf("interval: %ld\n", t_resp.interval);
@@ -629,6 +651,11 @@ i32 main(i32 argc, char **argv) {
     printf("complete: %ld\n", t_resp.complete);
     printf("incomplete: %ld\n", t_resp.incomplete);
     printf("downloaded: %ld\n", t_resp.downloaded);
+    for (u32 i = 0; i < t_resp.peer_count; i++) {
+      if (i == 0) printf("peers:\n");
+      printf("  (%d)\t ip: 0x%x \t| port: %d\n", i, t_resp.peers[i].ip,
+             t_resp.peers[i].port);
+    }
     printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len,
            t_resp.warning_message.data);
     printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len,
