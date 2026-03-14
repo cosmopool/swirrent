@@ -483,7 +483,7 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
     exit(1);
   }
 
-  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+  for (u32 i = 0; i < SHA_DIGEST_LENGTH; ++i) {
     sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
   }
 
