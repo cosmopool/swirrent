@@ -33,16 +33,71 @@ static inline int string_matches(const char *key, usize key_len, String string) 
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
-#define MAX_TRACKERS 1025
-#define MAX_PATHS 4096
-#define MAX_FILES 2048
-#define MAX_PEERS 1024
+typedef struct {
+  String *items;
+  usize count;
+  usize capacity;
+} StringArray;
 
-static String *trackers_url;
-static String *paths;
-static TorrentFile *files;
-static TorrentPeer *peers;
+typedef struct {
+  TorrentFile *items;
+  usize count;
+  usize capacity;
+} FileArray;
+
+typedef struct {
+  TorrentPeer *items;
+  usize count;
+  usize capacity;
+} PeerArray;
+
+static StringArray trackers_url = {0};
+static StringArray paths = {0};
+static FileArray files = {0};
+static PeerArray peers = {0};
 static TorrentMetainfo metainfo = {0};
+
+static void ensure_string_capacity(StringArray *arr, usize needed) {
+  if (arr->count + needed <= arr->capacity) return;
+  
+  usize new_cap = arr->capacity == 0 ? 16 : arr->capacity;
+  while (new_cap < arr->count + needed) new_cap *= 2;
+  
+  arr->items = realloc(arr->items, new_cap * sizeof(String));
+  if (!arr->items) {
+    fprintf(stderr, "Out of memory\n");
+    exit(1);
+  }
+  arr->capacity = new_cap;
+}
+
+static void ensure_file_capacity(FileArray *arr, usize needed) {
+  if (arr->count + needed <= arr->capacity) return;
+  
+  usize new_cap = arr->capacity == 0 ? 16 : arr->capacity;
+  while (new_cap < arr->count + needed) new_cap *= 2;
+  
+  arr->items = realloc(arr->items, new_cap * sizeof(TorrentFile));
+  if (!arr->items) {
+    fprintf(stderr, "Out of memory\n");
+    exit(1);
+  }
+  arr->capacity = new_cap;
+}
+
+static void ensure_peer_capacity(PeerArray *arr, usize needed) {
+  if (arr->count + needed <= arr->capacity) return;
+  
+  usize new_cap = arr->capacity == 0 ? 16 : arr->capacity;
+  while (new_cap < arr->count + needed) new_cap *= 2;
+  
+  arr->items = realloc(arr->items, new_cap * sizeof(TorrentPeer));
+  if (!arr->items) {
+    fprintf(stderr, "Out of memory\n");
+    exit(1);
+  }
+  arr->capacity = new_cap;
+}
 
 void printMetainfo() {
   printf("meta info\n");
@@ -59,15 +114,15 @@ void printMetainfo() {
     printf("length: %ldM\n", metainfo.info.length / 1024 / 1024);
 
   for (u32 i = 0; i < metainfo.trackers_count; i++) {
-    mcl_printString(trackers_url[i]);
+    mcl_printString(trackers_url.items[i]);
     printf("\n");
   }
 
   if (!metainfo.info.is_single_file) {
-    metainfo.info.multi_files.files = (TorrentFile *)&files;
+    metainfo.info.multi_files.files = files.items;
     if (metainfo.info.multi_files.count > 0) printf("files:\n");
     for (u32 i = 0; i < metainfo.info.multi_files.count; i++) {
-      TorrentFile file = files[i];
+      TorrentFile file = files.items[i];
       printf(" length: %ld\n", file.length);
       printf(" path:\n");
       for (u32 j = 0; j < file.path_count; j++) {
@@ -193,13 +248,9 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
           parser->cursor++;
           usize start = parser->cursor;
           while (bencode.data[parser->cursor] != 'e') {
-            if (metainfo.trackers_count < MAX_TRACKERS) {
-              trackers_url[metainfo.trackers_count] =
-                  decodeString(parser, bencode);
-              metainfo.trackers_count++;
-            } else {
-              decodeString(parser, bencode);
-            }
+            ensure_string_capacity(&trackers_url, 1);
+            trackers_url.items[trackers_url.count++] = decodeString(parser, bencode);
+            metainfo.trackers_count++;
           }
           usize end = parser->cursor;
           parser->cursor++;
@@ -207,10 +258,9 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
         }
         BencodeValue v = bencodeDecode(parser, bencode);
         assert(v.kind == STRING);
-        if (metainfo.trackers_count < MAX_TRACKERS) {
-          trackers_url[metainfo.trackers_count] = v.string;
-          metainfo.trackers_count++;
-        }
+        ensure_string_capacity(&trackers_url, 1);
+        trackers_url.items[trackers_url.count++] = v.string;
+        metainfo.trackers_count++;
       }
       usize end = parser->cursor;
       parser->cursor++;
@@ -239,42 +289,44 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
 
   usize start = parser->cursor;
   parser->cursor++;
+  
+  // Ensure we have space for this file and initialize it
+  ensure_file_capacity(&files, 1);
+  usize file_idx = files.count;
+  files.items[file_idx] = (TorrentFile){0};
+  
   while (bencode.data[parser->cursor] != 'e') {
     String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("length", key)) {
       isize length = decodeInteger(parser, bencode);
-      if (metainfo.info.multi_files.count < MAX_FILES) {
-        files[metainfo.info.multi_files.count].length = length;
-      }
+      files.items[file_idx].length = length;
       continue;
     }
 
     if (STRING_MATCHES("path", key)) {
-      // Record where this file's paths start in the flat array
-      usize file_idx = metainfo.info.multi_files.count;
-      if (file_idx < MAX_FILES) {
-        files[file_idx].path = &paths[parser->path_cursor];
-      }
-
+      // Allocate path array for this file
+      usize path_start = paths.count;
+      
       // Manually consume the list 'l...e' inline, no recursive decode
       assert(IS_LIST);
       parser->cursor++;
       while (bencode.data[parser->cursor] != 'e') {
-        if (parser->path_cursor < MAX_PATHS && file_idx < MAX_FILES) {
-          paths[parser->path_cursor++] = decodeString(parser, bencode);
-          files[file_idx].path_count++;
-        } else {
-          decodeString(parser, bencode);
-        }
+        ensure_string_capacity(&paths, 1);
+        paths.items[paths.count++] = decodeString(parser, bencode);
+        files.items[file_idx].path_count++;
       }
       parser->cursor++;
-      if (metainfo.info.multi_files.count < MAX_FILES) {
-        metainfo.info.multi_files.count++;
-      }
+      
+      // Set path pointer to the start of this file's paths
+      files.items[file_idx].path = &paths.items[path_start];
       continue;
     }
   }
+  
+  // Now increment the count after we've fully populated the file
+  files.count++;
+  metainfo.info.multi_files.count++;
   parser->cursor++;
   usize end = parser->cursor;
   BencodeValue value = {0};
@@ -389,7 +441,9 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
 
     if (STRING_MATCHES("peers6", key)) {
       String peers_str = decodeString(parser, bencode);
-      for (u32 i = 0; i < peers_str.len / 6; i++) {
+      usize peer_count = peers_str.len / 6;
+      ensure_peer_capacity(&peers, peer_count);
+      for (u32 i = 0; i < peer_count; i++) {
         usize stride = i * 6;
         u32 ip = 0;
         ip |= ((u32)peers_str.data[stride + 0] << 24);
@@ -399,7 +453,7 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
         u16 port = 0;
         port |= ((u16)peers_str.data[stride + 4] << 8);
         port |= ((u16)peers_str.data[stride + 5] << 0);
-        tracker_resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
+        peers.items[peers.count++] = (TorrentPeer){.ip = ip, .port = port};
         tracker_resp->peer_count++;
       }
       continue;
@@ -492,7 +546,8 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
       buff_slice = bencodeEncodeDictKey("path", buff_slice);
       buff_slice = bencodeEncodeList(buff_slice);
       for (u32 j = 0; j < file->path_count; j++) {
-        buff_slice = bencodeEncodeString(*(file->path + j), buff_slice);
+        String path_str = *(file->path + j);
+        buff_slice = bencodeEncodeString(path_str, buff_slice);
       }
       buff_slice = bencodeEncodeClose(buff_slice); // path list
 
@@ -575,17 +630,6 @@ usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
 }
 
 i32 main(i32 argc, char **argv) {
-  // Allocate arrays on heap instead of stack/BSS
-  trackers_url = calloc(MAX_TRACKERS, sizeof(String));
-  paths = calloc(MAX_PATHS, sizeof(String));
-  files = calloc(MAX_FILES, sizeof(TorrentFile));
-  peers = calloc(MAX_PEERS, sizeof(TorrentPeer));
-  
-  if (!trackers_url || !paths || !files || !peers) {
-    fprintf(stderr, "Failed to allocate memory\n");
-    exit(1);
-  }
-
   if (!argv[1]) {
     printf("a torrent file must be provided as argument");
     exit(1);
@@ -625,7 +669,7 @@ i32 main(i32 argc, char **argv) {
   bencodeDecode(&parser, bencode);
 
   if (!metainfo.info.is_single_file) {
-    metainfo.info.multi_files.files = files;
+    metainfo.info.multi_files.files = files.items;
   }
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
     printMetainfo();
@@ -635,10 +679,10 @@ i32 main(i32 argc, char **argv) {
   // Cleanup
   munmap(file_content, st.st_size);
   close(fd);
-  free(trackers_url);
-  free(paths);
-  free(files);
-  free(peers);
+  free(trackers_url.items);
+  free(paths.items);
+  free(files.items);
+  free(peers.items);
 
   return 0;
   u32 result = 0;
@@ -647,9 +691,9 @@ i32 main(i32 argc, char **argv) {
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     char url[1024] = {0};
-    metainfo.announce = trackers_url[6];
+    metainfo.announce = trackers_url.items[6];
     if (metainfo.announce.len == 0)
-      snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
+      snprintf(url, trackers_url.items[0].len + 1, "%s", trackers_url.items[0].data);
     else
       snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
     switch (url[metainfo.announce.len - 1]) {
@@ -700,7 +744,7 @@ i32 main(i32 argc, char **argv) {
 
     BencodeParser p = {0};
     TorrentTrackerResponse t_resp = {0};
-    t_resp.peers = peers;
+    t_resp.peers = peers.items;
     decodeTrackerResponse(&p, resp, &t_resp);
     printf("\nTRACKER RESPONSE\n");
     printf("interval: %ld\n", t_resp.interval);
