@@ -21,8 +21,8 @@
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
-static String trackers_url[2048 * 4] = {0};
-static String paths[2048 * 4] = {0};
+static String trackers_url[2048] = {0};
+static String paths[2048] = {0};
 static TorrentFile files[2048] = {0};
 static TorrentPeer peers[2048] = {0};
 static TorrentMetainfo metainfo = {0};
