@@ -312,7 +312,10 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode) {
 
 BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
                                    TorrentTrackerResponse *tracker_resp) {
-  assert(IS_DICT);
+  if (bencode.data[parser->cursor] != 'd') {
+    tracker_resp->failure_reason = bencode;
+    return (BencodeValue){};
+  }
 
   parser->cursor++;
   usize dict_start = parser->cursor;
@@ -320,9 +323,9 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
     String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      String str = decodeString(parser, bencode);
-      printf("failure reason: %.*s\n", (u32)str.len, str.data);
-      return (BencodeValue){.kind = STRING, .string = str};
+      tracker_resp->failure_reason = decodeString(parser, bencode);
+      return (BencodeValue){.kind = STRING,
+                            .string = tracker_resp->failure_reason};
     }
 
     if (STRING_MATCHES("complete", key)) {
@@ -581,11 +584,24 @@ i32 main(i32 argc, char **argv) {
 
   u32 result = 0;
   CURL *curl = curl_easy_init();
-  if (curl) {
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+  if (!curl) {
+    curl_global_cleanup();
+    exit(1);
+  }
 
+  for (u32 j = 0; j < metainfo.trackers_count; j++) {
+    String tracker_url = trackers_url[j];
+    if (tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' &&
+        tracker_url.data[2] == 'p') {
+      printf("===| Only http trackers are supported. Skipping '%.*s'\n",
+             (u32)tracker_url.len, tracker_url.data);
+      continue;
+    }
+
+    // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
     char url[1024] = {0};
-    metainfo.announce = trackers_url[6];
+
+    metainfo.announce = trackers_url[j];
     if (metainfo.announce.len == 0)
       snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
     else
@@ -632,15 +648,32 @@ i32 main(i32 argc, char **argv) {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
 
     result = curl_easy_perform(curl);
-    if (result != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
+    if (result != CURLE_OK) {
+      fprintf(stderr, "===| Communication with tracker '%.*s' failed: %s\n",
+              (u32)metainfo.announce.len, metainfo.announce.data,
               curl_easy_strerror(result));
+      continue;
+    }
 
     BencodeParser p = {0};
     TorrentTrackerResponse t_resp = {0};
     t_resp.peers = peers;
     decodeTrackerResponse(&p, resp, &t_resp);
-    printf("\nTRACKER RESPONSE\n");
+    if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
+      printf(
+          "===| Skipping tracker '%.*s' with warning_message: %.*s. Trying another one.\n",
+          (u32)metainfo.announce.len, metainfo.announce.data,
+          (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+      continue;
+    }
+    if (t_resp.failure_reason.len > 0 && t_resp.peer_count == 0) {
+      printf(
+          "===| Skipping tracker '%.*s' because failed: %.*s. Trying another one.\n",
+          (u32)metainfo.announce.len, metainfo.announce.data,
+          (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
+      continue;
+    }
+    printf("\n===| TRACKER RESPONSE\n");
     printf("interval: %ld\n", t_resp.interval);
     printf("min interval: %ld\n", t_resp.min_interval);
     printf("complete: %ld\n", t_resp.complete);
@@ -655,9 +688,10 @@ i32 main(i32 argc, char **argv) {
            t_resp.warning_message.data);
     printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len,
            t_resp.failure_reason.data);
-
-    curl_easy_cleanup(curl);
+    break;
   }
+
+  curl_easy_cleanup(curl);
   curl_global_cleanup();
   return (int)result;
 }
