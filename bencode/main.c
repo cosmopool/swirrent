@@ -33,10 +33,15 @@ static inline int string_matches(const char *key, usize key_len, String string) 
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
-static String trackers_url[256] = {0};
-static String paths[1024] = {0};
-static TorrentFile files[512] = {0};
-static TorrentPeer peers[512] = {0};
+#define MAX_TRACKERS 2048
+#define MAX_PATHS 8192
+#define MAX_FILES 4096
+#define MAX_PEERS 2048
+
+static String trackers_url[MAX_TRACKERS] = {0};
+static String paths[MAX_PATHS] = {0};
+static TorrentFile files[MAX_FILES] = {0};
+static TorrentPeer peers[MAX_PEERS] = {0};
 static TorrentMetainfo metainfo = {0};
 
 void printMetainfo() {
@@ -188,9 +193,13 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
           parser->cursor++;
           usize start = parser->cursor;
           while (bencode.data[parser->cursor] != 'e') {
-            trackers_url[metainfo.trackers_count] =
-                decodeString(parser, bencode);
-            metainfo.trackers_count++;
+            if (metainfo.trackers_count < MAX_TRACKERS) {
+              trackers_url[metainfo.trackers_count] =
+                  decodeString(parser, bencode);
+              metainfo.trackers_count++;
+            } else {
+              decodeString(parser, bencode);
+            }
           }
           usize end = parser->cursor;
           parser->cursor++;
@@ -198,8 +207,10 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode) {
         }
         BencodeValue v = bencodeDecode(parser, bencode);
         assert(v.kind == STRING);
-        trackers_url[metainfo.trackers_count] = v.string;
-        metainfo.trackers_count++;
+        if (metainfo.trackers_count < MAX_TRACKERS) {
+          trackers_url[metainfo.trackers_count] = v.string;
+          metainfo.trackers_count++;
+        }
       }
       usize end = parser->cursor;
       parser->cursor++;
@@ -232,25 +243,35 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode) {
     String key = decodeString(parser, bencode);
 
     if (STRING_MATCHES("length", key)) {
-      files[metainfo.info.multi_files.count].length =
-          decodeInteger(parser, bencode);
+      isize length = decodeInteger(parser, bencode);
+      if (metainfo.info.multi_files.count < MAX_FILES) {
+        files[metainfo.info.multi_files.count].length = length;
+      }
       continue;
     }
 
     if (STRING_MATCHES("path", key)) {
       // Record where this file's paths start in the flat array
       usize file_idx = metainfo.info.multi_files.count;
-      files[file_idx].path = &paths[parser->path_cursor];
+      if (file_idx < MAX_FILES) {
+        files[file_idx].path = &paths[parser->path_cursor];
+      }
 
       // Manually consume the list 'l...e' inline, no recursive decode
       assert(IS_LIST);
       parser->cursor++;
       while (bencode.data[parser->cursor] != 'e') {
-        paths[parser->path_cursor++] = decodeString(parser, bencode);
-        files[file_idx].path_count++;
+        if (parser->path_cursor < MAX_PATHS && file_idx < MAX_FILES) {
+          paths[parser->path_cursor++] = decodeString(parser, bencode);
+          files[file_idx].path_count++;
+        } else {
+          decodeString(parser, bencode);
+        }
       }
       parser->cursor++;
-      metainfo.info.multi_files.count++;
+      if (metainfo.info.multi_files.count < MAX_FILES) {
+        metainfo.info.multi_files.count++;
+      }
       continue;
     }
   }
@@ -448,7 +469,7 @@ char *bencodeEncodeClose(char *dest) {
   return dest + 1;
 }
 
-#define MAX_LEN (256 * 1024)
+#define MAX_LEN (2 * 1024 * 1024)
 void bencodeEncodeInfoSHA1(TorrentInfo info) {
   u8 hash[SHA_DIGEST_LENGTH] = {0};
   char buff[MAX_LEN] = {0};
