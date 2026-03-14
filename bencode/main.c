@@ -2,6 +2,7 @@
 #include <curl/curl.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -99,6 +100,39 @@ static void ensure_peer_capacity(PeerArray *arr, usize needed) {
   arr->capacity = new_cap;
 }
 
+// Fast integer parser for bencode - digits only, base-10, known terminator
+static isize parse_bencode_int(const char *start, const char *end, char terminator) {
+  isize result = 0;
+  const char *p = start;
+  
+  // Skip optional sign (bencode integers can be negative)
+  isize sign = 1;
+  if (*p == '-') {
+    sign = -1;
+    p++;
+  }
+  
+  // Parse digits
+  while (p < end && *p >= '0' && *p <= '9') {
+    // Check for overflow before multiplying
+    if (result > (INT_MAX / 10)) {
+      // Overflow - clamp to max
+      return sign == 1 ? INT_MAX : INT_MIN;
+    }
+    
+    result = result * 10 + (*p - '0');
+    p++;
+  }
+  
+  // Verify we hit the expected terminator
+  if (p >= end || *p != terminator) {
+    fprintf(stderr, "Invalid bencode integer format\n");
+    exit(1);
+  }
+  
+  return sign * result;
+}
+
 void printMetainfo() {
   printf("meta info\n");
   printf("announce: ");
@@ -155,15 +189,15 @@ void printStringSlice(usize len, const char *str_c) {
 }
 
 String decodeString(BencodeParser *parser, String bencode) {
-  char *colon_ptr;
-  errno = 0;
-  isize str_len = strtol(&bencode.data[parser->cursor], &colon_ptr, 10);
-  if (errno) {
-    char *msg = "[BAD STRING] Not able to decode string lenght: %s\n";
-    fprintf(stderr, msg, strerror(errno));
-    exit(1);
-  }
+  const char *start = &bencode.data[parser->cursor];
+  const char *end = &bencode.data[bencode.len];
+  
+  isize str_len = parse_bencode_int(start, end, ':');
   assert(bencode.len - parser->cursor > str_len);
+
+  // Find colon position
+  const char *colon_ptr = start;
+  while (*colon_ptr != ':') colon_ptr++;
 
   BencodeValue value = {
       .kind = STRING,
@@ -182,19 +216,18 @@ String decodeString(BencodeParser *parser, String bencode) {
 
 isize decodeInteger(BencodeParser *parser, String bencode) {
   assert(bencode.len - parser->cursor > 3);
-  char *end_ptr;
-
-  const char *start_ptr = &bencode.data[parser->cursor];
-  isize integer = strtol(start_ptr + 1, &end_ptr, 10);
-  if (errno) {
-    printf("Not able to convert to integer: %s\n", strerror(errno));
-    char *msg = "[BAD INTEGER] Not able to convert integer from: %*s\n";
-    fprintf(stderr, msg, 25, start_ptr);
-    exit(1);
-  }
+  
+  const char *start = &bencode.data[parser->cursor] + 1; // Skip 'i'
+  const char *end = &bencode.data[bencode.len];
+  
+  isize integer = parse_bencode_int(start, end, 'e');
 
   // find where the string ended and set the cursor to that position
-  parser->cursor = end_ptr - bencode.data + 1;
+  // Find the 'e' terminator
+  const char *e_ptr = start;
+  while (*e_ptr != 'e') e_ptr++;
+  
+  parser->cursor = (e_ptr - bencode.data) + 1;
 
   return integer;
 }
