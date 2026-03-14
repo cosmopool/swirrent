@@ -683,8 +683,10 @@ i32 main(i32 argc, char **argv) {
     printf("downloaded: %ld\n", t_resp.downloaded);
     for (u32 i = 0; i < t_resp.peer_count; i++) {
       if (i == 0) printf("peers:\n");
-      printf("  (%d)\t ip: 0x%x \t| port: %d\n", i, t_resp.peers[i].ip,
-             t_resp.peers[i].port);
+      u32 val = t_resp.peers[i].ip;
+      printf("  (%d)\t ip: %d.%d.%d.%d \t | port: %d\n", i,
+             (val & 0xFF000000) >> 24, (val & 0x00FF0000) >> 16,
+             (val & 0x0000FF00) >> 8, val & 0x000000FF, t_resp.peers[i].port);
     }
     printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len,
            t_resp.warning_message.data);
