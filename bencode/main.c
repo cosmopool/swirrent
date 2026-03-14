@@ -523,21 +523,67 @@ char *bencodeEncodeDictKey(char *key, char *dest) {
 }
 
 char *bencodeEncodeInteger(usize integer, char *dest) {
-  char tmp[64] = {0};
-  i32 encoded_len = snprintf(tmp, 64, "i%lde", integer);
-  assert(encoded_len > 0);
-  memcpy(dest, tmp, encoded_len);
-  return dest + encoded_len;
+  char *p = dest;
+  *p++ = 'i';
+  
+  // Handle zero
+  if (integer == 0) {
+    *p++ = '0';
+  } else {
+    // Convert digits in reverse order
+    char *start = p;
+    while (integer > 0) {
+      *p++ = '0' + (integer % 10);
+      integer /= 10;
+    }
+    // Reverse the digits
+    char *end = p - 1;
+    while (start < end) {
+      char tmp = *start;
+      *start = *end;
+      *end = tmp;
+      start++;
+      end--;
+    }
+  }
+  
+  *p++ = 'e';
+  return p;
 }
 
 char *bencodeEncodeString(String string, char *dest) {
-  char tmp[64] = {0};
-  i32 encoded_len = snprintf(tmp, 64, "%ld:", string.len);
-  assert(encoded_len > 0);
-  memcpy(dest, tmp, encoded_len);
-  dest += encoded_len;
-  memcpy(dest, string.data, string.len);
-  return dest + string.len;
+  // Fast integer to string conversion for length prefix
+  char *p = dest;
+  usize len = string.len;
+  
+  // Handle zero
+  if (len == 0) {
+    *p++ = '0';
+  } else {
+    // Convert digits in reverse order
+    char *start = p;
+    while (len > 0) {
+      *p++ = '0' + (len % 10);
+      len /= 10;
+    }
+    // Reverse the digits
+    char *end = p - 1;
+    while (start < end) {
+      char tmp = *start;
+      *start = *end;
+      *end = tmp;
+      start++;
+      end--;
+    }
+  }
+  
+  // Add colon
+  *p++ = ':';
+  
+  // Copy string data
+  memcpy(p, string.data, string.len);
+  
+  return p + string.len;
 }
 
 char *bencodeEncodeDict(char *dest) {
@@ -556,11 +602,71 @@ char *bencodeEncodeClose(char *dest) {
   return dest + 1;
 }
 
-#define MAX_LEN (2 * 1024 * 1024)
+// Calculate the size needed for encoding the info dictionary
+static usize calculate_info_size(TorrentInfo info) {
+  usize size = 1; // 'd'
+  
+  // name
+  size += 4; // "4:name"
+  size += info.name.len;
+  size += snprintf(NULL, 0, "%lu", info.name.len) + 1; // length prefix
+  
+  // piece length
+  size += 13; // "12:piece length"
+  size += snprintf(NULL, 0, "%lu", info.piece_length) + 1; // integer value
+  
+  // pieces
+  size += 6; // "6:pieces"
+  size += info.pieces.len;
+  size += snprintf(NULL, 0, "%lu", info.pieces.len) + 1; // length prefix
+  
+  if (info.is_single_file) {
+    // length
+    size += 6; // "6:length"
+    size += snprintf(NULL, 0, "%lu", info.length) + 1; // integer value
+  } else {
+    // files
+    size += 5; // "5:files"
+    size += 1; // 'l'
+    
+    for (u32 i = 0; i < info.multi_files.count; i++) {
+      TorrentFile *file = info.multi_files.files + i;
+      size += 1; // 'd'
+      
+      // length
+      size += 6; // "6:length"
+      size += snprintf(NULL, 0, "%lu", file->length) + 1; // integer value
+      
+      // path
+      size += 4; // "4:path"
+      size += 1; // 'l'
+      
+      for (u32 j = 0; j < file->path_count; j++) {
+        String path = file->path[j];
+        size += path.len;
+        size += snprintf(NULL, 0, "%lu", path.len) + 1; // length prefix
+      }
+      
+      size += 1; // 'e' (end of path list)
+      size += 1; // 'e' (end of file dict)
+    }
+    
+    size += 1; // 'e' (end of files list)
+  }
+  
+  size += 1; // 'e' (end of info dict)
+  return size;
+}
+
 void bencodeEncodeInfoSHA1(TorrentInfo info) {
   u8 hash[SHA_DIGEST_LENGTH] = {0};
-  char buff[MAX_LEN] = {0};
-  char *buff_slice = &buff[0];
+  usize size = calculate_info_size(info);
+  char *buff = malloc(size);
+  if (!buff) {
+    fprintf(stderr, "Failed to allocate %zu bytes for info encoding\n", size);
+    exit(1);
+  }
+  char *buff_slice = buff;
 
   buff_slice = bencodeEncodeDict(buff_slice);
   if (info.is_single_file) {
@@ -608,8 +714,10 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
   // }
 
   for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-    sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+    sprintf(&metainfo.info_hash[i * 2], "%02x", hash[i]);
   }
+
+  free(buff);
 
   printf("SHA1: %s\n", metainfo.info_hash);
 }
