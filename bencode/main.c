@@ -354,14 +354,12 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
       String peers_str = decodeString(parser, bencode);
       for (u32 i = 0; i < peers_str.len / 6; i++) {
         usize stride = i * 6;
-        u32 ip = 0;
-        ip |= ((u32)peers_str.data[stride + 0] << 24);
-        ip |= ((u32)peers_str.data[stride + 1] << 16);
-        ip |= ((u32)peers_str.data[stride + 2] << 8);
-        ip |= ((u32)peers_str.data[stride + 3] << 0);
-        u16 port = 0;
-        port |= ((u16)peers_str.data[stride + 4] << 8);
-        port |= ((u16)peers_str.data[stride + 5] << 0);
+        u32 ip = ((u32)peers_str.data[stride + 0] << 24) +
+                 ((u32)peers_str.data[stride + 1] << 16) +
+                 ((u32)peers_str.data[stride + 2] << 8) +
+                 ((u32)peers_str.data[stride + 3] << 0);
+        u16 port = ((u16)peers_str.data[stride + 4] << 8) +
+                   ((u16)peers_str.data[stride + 5] << 0);
         tracker_resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
         tracker_resp->peer_count++;
       }
