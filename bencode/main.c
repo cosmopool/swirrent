@@ -674,6 +674,8 @@ i32 main(i32 argc, char **argv) {
       continue;
     }
     printf("\n===| TRACKER RESPONSE\n");
+    printf("tracker url: %.*s\n", (u32)metainfo.announce.len,
+           metainfo.announce.data);
     printf("interval: %ld\n", t_resp.interval);
     printf("min interval: %ld\n", t_resp.min_interval);
     printf("complete: %ld\n", t_resp.complete);
