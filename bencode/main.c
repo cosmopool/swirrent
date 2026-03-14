@@ -33,15 +33,15 @@ static inline int string_matches(const char *key, usize key_len, String string) 
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
-#define MAX_TRACKERS 2048
-#define MAX_PATHS 8192
-#define MAX_FILES 4096
-#define MAX_PEERS 2048
+#define MAX_TRACKERS 1025
+#define MAX_PATHS 4096
+#define MAX_FILES 2048
+#define MAX_PEERS 1024
 
-static String trackers_url[MAX_TRACKERS] = {0};
-static String paths[MAX_PATHS] = {0};
-static TorrentFile files[MAX_FILES] = {0};
-static TorrentPeer peers[MAX_PEERS] = {0};
+static String *trackers_url;
+static String *paths;
+static TorrentFile *files;
+static TorrentPeer *peers;
 static TorrentMetainfo metainfo = {0};
 
 void printMetainfo() {
@@ -575,6 +575,16 @@ usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
 }
 
 i32 main(i32 argc, char **argv) {
+  // Allocate arrays on heap instead of stack/BSS
+  trackers_url = calloc(MAX_TRACKERS, sizeof(String));
+  paths = calloc(MAX_PATHS, sizeof(String));
+  files = calloc(MAX_FILES, sizeof(TorrentFile));
+  peers = calloc(MAX_PEERS, sizeof(TorrentPeer));
+  
+  if (!trackers_url || !paths || !files || !peers) {
+    fprintf(stderr, "Failed to allocate memory\n");
+    exit(1);
+  }
 
   if (!argv[1]) {
     printf("a torrent file must be provided as argument");
@@ -615,12 +625,20 @@ i32 main(i32 argc, char **argv) {
   bencodeDecode(&parser, bencode);
 
   if (!metainfo.info.is_single_file) {
-    metainfo.info.multi_files.files = (TorrentFile *)&files;
+    metainfo.info.multi_files.files = files;
   }
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
     printMetainfo();
   }
   bencodeEncodeInfoSHA1(metainfo.info);
+
+  // Cleanup
+  munmap(file_content, st.st_size);
+  close(fd);
+  free(trackers_url);
+  free(paths);
+  free(files);
+  free(peers);
 
   return 0;
   u32 result = 0;
