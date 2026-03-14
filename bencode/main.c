@@ -12,7 +12,7 @@
 #include "bencode.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
-// #include "teeny-sha1.c"
+#include "sha1_optimized.h"
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
@@ -707,11 +707,10 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
   buff_slice = bencodeEncodeClose(buff_slice); // info dict
   usize len = buff_slice - buff;
 
-  // if (sha1digest(hash, NULL, (u8 *)buff, len) != 0) {
-  //   printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!",
-  //          __FILE__, __LINE__);
-  //   exit(1);
-  // }
+  if (sha1_fast(hash, (u8 *)buff, len) != 0) {
+    fprintf(stderr, "Failed to generate SHA1 hash of info dictionary\n");
+    exit(1);
+  }
 
   for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
     sprintf(&metainfo.info_hash[i * 2], "%02x", hash[i]);
