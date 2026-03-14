@@ -1,13 +1,17 @@
 #include <assert.h>
 #include <curl/curl.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "bencode.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
-#include "teeny-sha1.c"
+// #include "teeny-sha1.c"
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
@@ -480,11 +484,11 @@ void bencodeEncodeInfoSHA1(TorrentInfo info) {
   buff_slice = bencodeEncodeClose(buff_slice); // info dict
   usize len = buff_slice - buff;
 
-  if (sha1digest(hash, NULL, (u8 *)buff, len) != 0) {
-    printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!",
-           __FILE__, __LINE__);
-    exit(1);
-  }
+  // if (sha1digest(hash, NULL, (u8 *)buff, len) != 0) {
+  //   printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!",
+  //          __FILE__, __LINE__);
+  //   exit(1);
+  // }
 
   for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
     sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
@@ -548,25 +552,30 @@ i32 main(i32 argc, char **argv) {
     exit(1);
   }
   printf("FILE: %s\n", argv[1]);
-  FILE *file_ptr = fopen(argv[1], "rb");
-  if (file_ptr == NULL) {
-    perror("fopen");
+  int fd = open(argv[1], O_RDONLY);
+  if (fd == -1) {
+    perror("open");
     exit(1);
   }
 
-  // calculate the file size
-  fseek(file_ptr, 0, SEEK_END);
-  u64 file_length = ftell(file_ptr);
-  rewind(file_ptr);
+  struct stat st;
+  if (fstat(fd, &st) == -1) {
+    perror("fstat");
+    close(fd);
+    exit(1);
+  }
 
-  // allocate and copy the file contents
-  char *file_content = (char *)malloc(file_length * sizeof(char));
-  fread(file_content, file_length, 1, file_ptr);
-  fclose(file_ptr);
-  printf("FILE SIZE: %luK\n", file_length / 1024);
+  char *file_content = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (file_content == MAP_FAILED) {
+    perror("mmap");
+    close(fd);
+    exit(1);
+  }
+  
+  printf("FILE SIZE: %lluK\n", st.st_size / 1024);
 
   String bencode = {
-      .len = file_length,
+      .len = st.st_size,
       .data = file_content,
   };
 
@@ -584,6 +593,7 @@ i32 main(i32 argc, char **argv) {
   }
   bencodeEncodeInfoSHA1(metainfo.info);
 
+  return 0;
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (curl) {
@@ -664,5 +674,7 @@ i32 main(i32 argc, char **argv) {
     curl_easy_cleanup(curl);
   }
   curl_global_cleanup();
+  munmap(file_content, st.st_size);
+  close(fd);
   return (int)result;
 }
