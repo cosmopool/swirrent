@@ -18,17 +18,25 @@
 #define IS_LIST bencode.data[parser->cursor] == 'l'
 #define IS_DICT bencode.data[parser->cursor] == 'd'
 
-#define STRING_MATCHES(key, string)                                            \
-  (string.data[0] == (key)[0] && string.len == (sizeof(key) - 1) &&            \
-   memcmp(string.data, key, sizeof(key) - 1) == 0)
+static inline int string_matches(const char *key, usize key_len, String string) {
+  if (string.len != key_len) return 0;
+  if (string.data[0] != key[0]) return 0;
+  for (usize i = 1; i < key_len; i++) {
+    if (string.data[i] != key[i]) return 0;
+  }
+  return 1;
+}
+
+#define STRING_MATCHES(key, string) \
+  string_matches(key, sizeof(key) - 1, string)
 
 #define SHA_DIGEST_LENGTH 20
 
 // static Arena default_arena = {0};
-static String trackers_url[2048 * 4] = {0};
-static String paths[2048 * 4] = {0};
-static TorrentFile files[2048] = {0};
-static TorrentPeer peers[2048] = {0};
+static String trackers_url[256] = {0};
+static String paths[1024] = {0};
+static TorrentFile files[512] = {0};
+static TorrentPeer peers[512] = {0};
 static TorrentMetainfo metainfo = {0};
 
 void printMetainfo() {
@@ -440,7 +448,7 @@ char *bencodeEncodeClose(char *dest) {
   return dest + 1;
 }
 
-#define MAX_LEN 2 * 1025 * 1024
+#define MAX_LEN (256 * 1024)
 void bencodeEncodeInfoSHA1(TorrentInfo info) {
   u8 hash[SHA_DIGEST_LENGTH] = {0};
   char buff[MAX_LEN] = {0};
