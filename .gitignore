@@ -1,7 +1,11 @@
 .cache/
 build/
 build_test/
+*.dSYM/
 *.elf
 *.nacp
 *.nro
+*.torrent
+*.o
 compile_commands.json
+decoder

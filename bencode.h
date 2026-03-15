@@ -1,5 +1,4 @@
 #pragma once
-#include "../include/arena.h"
 #include "core.h"
 #include "torrent.h"
 
@@ -22,9 +21,6 @@ typedef struct {
 
 typedef i64 BencodeNumber;
 typedef String BencodeString;
-
-void BencodeDecode(Arena *arena, BencodeParser *parser, const char *bencode_str,
-                   usize len);
 
 // dictionary
 typedef struct {
