@@ -180,7 +180,16 @@ void torrentInfoMultiFileSet(TorrentInfo *info) {
   }
 }
 
+TorrentMetainfo *torrentMetainfoInit() {
+  TorrentMetainfo *metainfo = malloc(sizeof(TorrentMetainfo));
+  metainfo->trackers_url = malloc(sizeof(String) * 2048);
+  return metainfo;
+}
+
 void torrentMetainfoCleanup(TorrentMetainfo *mi) {
+  assert(mi->trackers_url);
+  free(mi->trackers_url);
+
   if (mi->info.is_single_file) {
     assert(!mi->info.multi_files.files);
     assert(!mi->info.multi_files.paths);
@@ -192,6 +201,8 @@ void torrentMetainfoCleanup(TorrentMetainfo *mi) {
 
   assert(mi->info.multi_files.paths);
   free(mi->info.multi_files.paths);
+
+  free(mi);
 }
 
 void torrentMetainfoPrint(TorrentMetainfo metainfo) {

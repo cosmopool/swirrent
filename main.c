@@ -9,11 +9,6 @@
 #define TORRENT_IMPLEMENTATION
 #include "torrent.h"
 
-static String trackers_url[2048] = {0};
-static TorrentFile files[2048] = {0};
-static TorrentPeer peers[2048] = {0};
-static TorrentMetainfo metainfo = {.trackers_url = trackers_url};
-
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
   printf("RESPONSE: %s\n", ptr);
@@ -53,28 +48,26 @@ i32 main(i32 argc, char **argv) {
       .data = file_content,
   };
 
-  BencodeParser parser = {0};
-  assert(torrent_file_content.data[parser.cursor] == 'd');
-  bencodeDecode(&parser, torrent_file_content, &metainfo);
+  BencodeParser decoder = {0};
+  assert(torrent_file_content.data[decoder.cursor] == 'd');
+  TorrentMetainfo *metainfo = torrentMetainfoInit();
+  bencodeDecode(&decoder, torrent_file_content, metainfo);
 
-  if (!metainfo.info.is_single_file) {
-    metainfo.info.multi_files.files = (TorrentFile *)&files;
-  }
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
-    torrentMetainfoPrint(metainfo);
+    torrentMetainfoPrint(*metainfo);
   }
-  bencodeInfoDictEncode(metainfo);
+  bencodeInfoDictEncode(*metainfo);
 
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
     curl_global_cleanup();
-    torrentMetainfoCleanup(&metainfo);
+    torrentMetainfoCleanup(metainfo);
     exit(1);
   }
 
-  for (u32 j = 0; j < metainfo.trackers_count; j++) {
-    String tracker_url = trackers_url[j];
+  for (u32 j = 0; j < metainfo->trackers_count; j++) {
+    String tracker_url = metainfo->trackers_url[j];
     if (tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' &&
         tracker_url.data[2] == 'p') {
       printf("===| Only http trackers are supported. Skipping '%.*s'\n",
@@ -85,20 +78,21 @@ i32 main(i32 argc, char **argv) {
     // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
     char url[1024] = {0};
 
-    metainfo.announce = trackers_url[j];
-    if (metainfo.announce.len == 0)
-      snprintf(url, trackers_url[0].len + 1, "%s", trackers_url[0].data);
+    metainfo->announce = metainfo->trackers_url[j];
+    if (metainfo->announce.len == 0)
+      snprintf(url, metainfo->trackers_url[0].len + 1, "%s",
+               metainfo->trackers_url[0].data);
     else
-      snprintf(url, metainfo.announce.len + 1, "%s", metainfo.announce.data);
-    switch (url[metainfo.announce.len - 1]) {
+      snprintf(url, metainfo->announce.len + 1, "%s", metainfo->announce.data);
+    switch (url[metainfo->announce.len - 1]) {
     case '/':
-      assert(url[metainfo.announce.len] == '\0');
-      url[metainfo.announce.len - 1] = '?';
+      assert(url[metainfo->announce.len] == '\0');
+      url[metainfo->announce.len - 1] = '?';
       break;
 
     default:
-      assert(url[metainfo.announce.len] == '\0');
-      url[metainfo.announce.len] = '?';
+      assert(url[metainfo->announce.len] == '\0');
+      url[metainfo->announce.len] = '?';
       break;
     }
 
@@ -106,19 +100,19 @@ i32 main(i32 argc, char **argv) {
     char encoded_hash[61] = {0};
     for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
       offset +=
-          sprintf(encoded_hash + offset, "%%%02x", (u8)metainfo.info_hash[i]);
+          sprintf(encoded_hash + offset, "%%%02x", (u8)metainfo->info_hash[i]);
     }
     sprintf(url, "%sinfo_hash=%s", url, encoded_hash);
     sprintf(url, "%s&peer_id=%s", url, "k492jal1dkfj9oa3e8se");
     sprintf(url, "%s&port=%s", url, "6881");
     sprintf(url, "%s&uploaded=%s", url, "0");
     sprintf(url, "%s&downloaded=%s", url, "0");
-    if (metainfo.info.is_single_file) {
-      sprintf(url, "%s&left=%ld", url, metainfo.info.length);
+    if (metainfo->info.is_single_file) {
+      sprintf(url, "%s&left=%ld", url, metainfo->info.length);
     } else {
       usize len = 0;
-      for (u32 i = 0; i < metainfo.info.multi_files.count; i++) {
-        len += metainfo.info.multi_files.files[i].length;
+      for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
+        len += metainfo->info.multi_files.files[i].length;
       }
       sprintf(url, "%s&left=%ld", url, len);
     }
@@ -134,31 +128,32 @@ i32 main(i32 argc, char **argv) {
     result = curl_easy_perform(curl);
     if (result != CURLE_OK) {
       fprintf(stderr, "===| Communication with tracker '%.*s' failed: %s\n",
-              (u32)metainfo.announce.len, metainfo.announce.data,
+              (u32)metainfo->announce.len, metainfo->announce.data,
               curl_easy_strerror(result));
       continue;
     }
 
-    BencodeParser p = {0};
+    BencodeParser encoder = {0};
+    TorrentPeer peers[2048] = {0};
     TorrentTrackerResponse t_resp = {.peers = peers};
-    bencodeTrackerResponseDecode(&p, resp, &metainfo, &t_resp);
+    bencodeTrackerResponseDecode(&encoder, resp, metainfo, &t_resp);
     if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
       printf(
           "===| Skipping tracker '%.*s' with warning_message: %.*s. Trying another one.\n",
-          (u32)metainfo.announce.len, metainfo.announce.data,
+          (u32)metainfo->announce.len, metainfo->announce.data,
           (u32)t_resp.warning_message.len, t_resp.warning_message.data);
       continue;
     }
     if (t_resp.failure_reason.len > 0 && t_resp.peer_count == 0) {
       printf(
           "===| Skipping tracker '%.*s' because failed: %.*s. Trying another one.\n",
-          (u32)metainfo.announce.len, metainfo.announce.data,
+          (u32)metainfo->announce.len, metainfo->announce.data,
           (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
       continue;
     }
     printf("\n===| TRACKER RESPONSE\n");
-    printf("tracker url: %.*s\n", (u32)metainfo.announce.len,
-           metainfo.announce.data);
+    printf("tracker url: %.*s\n", (u32)metainfo->announce.len,
+           metainfo->announce.data);
     printf("interval: %ld\n", t_resp.interval);
     printf("min interval: %ld\n", t_resp.min_interval);
     printf("complete: %ld\n", t_resp.complete);
@@ -180,6 +175,6 @@ i32 main(i32 argc, char **argv) {
 
   curl_easy_cleanup(curl);
   curl_global_cleanup();
-  torrentMetainfoCleanup(&metainfo);
+  torrentMetainfoCleanup(metainfo);
   return (int)result;
 }
