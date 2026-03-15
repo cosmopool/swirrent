@@ -14,9 +14,8 @@ typedef enum : u8 {
 typedef struct {
   usize cursor;
   usize path_cursor;
-  usize dict_stack_pos;
-  usize dict_stack[128];
-  char tmp_buff[128];
+  const char *bencode;
+  usize bencode_len;
 } BencodeParser;
 
 typedef i64 BencodeNumber;
@@ -42,11 +41,15 @@ typedef struct {
   };
 } BencodeValue;
 
+BencodeParser bencodeParserFromData(char *data, usize len);
+BencodeParser bencodeParserFromFile(const char *file_path);
+void bencodeParserCleanup(BencodeParser *bencode);
+
 void bencodeInfoDictEncode(TorrentMetainfo m);
-BencodeValue bencodeDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
-isize bencodeIntegerDecode(BencodeParser *p, String bencode);
-String bencodeStringDecode(BencodeParser *p, String bencode);
-BencodeValue bencodeDictDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
-BencodeValue bencodeListDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
-BencodeValue bencodeInfoDictDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
-BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, String bencode, TorrentMetainfo *m, TorrentTrackerResponse *r);
+BencodeValue bencodeDecode(BencodeParser *p, TorrentMetainfo *m);
+isize bencodeIntegerDecode(BencodeParser *p);
+String bencodeStringDecode(BencodeParser *p);
+BencodeValue bencodeDictDecode(BencodeParser *p, TorrentMetainfo *m);
+BencodeValue bencodeListDecode(BencodeParser *p, TorrentMetainfo *m);
+BencodeValue bencodeInfoDictDecode(BencodeParser *p, TorrentMetainfo *m);
+BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *m, TorrentTrackerResponse *r);
