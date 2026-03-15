@@ -2,7 +2,10 @@
 #define _TORRENT_DEF
 
 #include "core.h"
+#include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 typedef struct TorrentFile {
   usize length;
@@ -13,6 +16,7 @@ typedef struct TorrentFile {
 typedef struct TorrentInfoFiles {
   // files list - array of file dictionaries
   TorrentFile *files;
+  String *paths;
   usize count;
 } TorrentInfoFiles;
 
@@ -47,7 +51,7 @@ typedef struct TorrentInfo {
 typedef struct TorrentMetainfo {
   // The URL of the tracker.
   String announce;
-
+  String *trackers_url;
   usize trackers_count;
 
   char info_hash[20 * 2 + 1];
@@ -156,6 +160,72 @@ void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
     hash[i + 2] = metainfo->info.pieces.data[real_idx + i + 2];
     hash[i + 3] = metainfo->info.pieces.data[real_idx + i + 3];
   }
+}
+
+void Torrent_InfoMultiFileSet(TorrentInfo *info) {
+  if (info->is_single_file) return;
+
+  if (!info->multi_files.files) {
+    usize size = sizeof(TorrentFile) * 2048;
+    info->multi_files.files = malloc(size);
+    assert(info->multi_files.files);
+    // memset(info->multi_files.files, 0, size);
+  }
+
+  if (!info->multi_files.paths) {
+    usize size = sizeof(String) * 2048;
+    info->multi_files.paths = malloc(size);
+    assert(info->multi_files.paths);
+    // memset(info->multi_files.files, 0, size);
+  }
+}
+
+void Torrent_MetainfoCleanup(TorrentMetainfo *mi) {
+  if (mi->info.is_single_file) {
+    assert(mi->info.multi_files.files == NULL);
+    assert(mi->info.multi_files.paths == NULL);
+    return;
+  }
+
+  assert(mi->info.multi_files.files);
+  free(mi->info.multi_files.files);
+
+  assert(mi->info.multi_files.paths);
+  free(mi->info.multi_files.paths);
+}
+
+void printMetainfo(TorrentMetainfo metainfo) {
+  printf("meta info\n");
+  printf("announce: ");
+  mcl_printString(metainfo.announce);
+  printf("\n");
+  printf("name: ");
+  mcl_printString(metainfo.info.name);
+  printf("\n");
+  printf("info hash: %s \n", metainfo.info_hash);
+  printf("piece length: %ldK\n", metainfo.info.piece_length / 1024);
+  printf("pieces: %lu\n", metainfo.info.pieces.len / 20);
+  if (metainfo.info.is_single_file)
+    printf("length: %ldM\n", metainfo.info.length / 1024 / 1024);
+
+  for (u32 i = 0; i < metainfo.trackers_count; i++) {
+    mcl_printString(metainfo.trackers_url[i]);
+    printf("\n");
+  }
+
+  if (!metainfo.info.is_single_file) {
+    if (metainfo.info.multi_files.count > 0) printf("files:\n");
+    for (u32 i = 0; i < metainfo.info.multi_files.count; i++) {
+      TorrentFile file = metainfo.info.multi_files.files[i];
+      printf(" length: %ld\n", file.length);
+      printf(" path:\n");
+      for (u32 j = 0; j < file.path_count; j++) {
+        String path = file.path[j];
+        printf("  - %.*s\n", (u32)path.len, path.data);
+      }
+    }
+  }
+  printf("\n");
 }
 
 #endif // TORRENT_IMPLEMENTATION

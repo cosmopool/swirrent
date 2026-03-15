@@ -21,20 +21,9 @@ typedef struct {
 
 typedef i64 BencodeNumber;
 typedef String BencodeString;
-
-// dictionary
-typedef struct {
-  String key;
-  void *value;
-} BencodeDictionaryEntry;
-
 typedef struct {
   void *entries;
 } BencodeDictionary;
-
-void BencodeDictSet(BencodeDictionary *dict, String key, void *value,
-                    BencodeType type);
-void *BencodeDictGet(BencodeDictionary *dict, String key);
 
 typedef struct {
   union {
@@ -53,10 +42,14 @@ typedef struct {
   };
 } BencodeValue;
 
-BencodeValue bencodeDecode(BencodeParser *parser, String bencode);
+BencodeValue bencodeDecode(BencodeParser *parser, String bencode,
+                           TorrentMetainfo *metainfo);
 isize decodeInteger(BencodeParser *parser, String bencode);
 String decodeString(BencodeParser *parser, String bencode);
-BencodeValue decodeDict(BencodeParser *parser, String bencode);
-BencodeValue decodeList(BencodeParser *parser, String bencode);
-BencodeValue decodeInfoDict(BencodeParser *parser, String bencode);
-void bencodeEncodeInfoSHA1(TorrentInfo info);
+BencodeValue decodeDict(BencodeParser *parser, String bencode,
+                        TorrentMetainfo *metainfo);
+BencodeValue decodeList(BencodeParser *parser, String bencode,
+                        TorrentMetainfo *metainfo);
+BencodeValue decodeInfoDict(BencodeParser *parser, String bencode,
+                            TorrentMetainfo *metainfo);
+void bencodeEncodeInfoSHA1(TorrentMetainfo metainfo);
