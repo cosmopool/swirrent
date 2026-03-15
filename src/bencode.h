@@ -2,7 +2,7 @@
 #include "core.h"
 #include "torrent.h"
 
-#include <stdbool.h>
+#define SHA_DIGEST_LENGTH 20
 
 typedef enum : u8 {
   INT,
@@ -44,12 +44,15 @@ typedef struct {
 
 void bencodeInfoDictEncode(TorrentMetainfo metainfo);
 BencodeValue bencodeDecode(BencodeParser *parser, String bencode,
-                            TorrentMetainfo *metainfo);
+                           TorrentMetainfo *metainfo);
 isize bencodeIntegerDecode(BencodeParser *parser, String bencode);
 String bencodeStringDecode(BencodeParser *parser, String bencode);
 BencodeValue bencodeDictDecode(BencodeParser *parser, String bencode,
-                                TorrentMetainfo *metainfo);
+                               TorrentMetainfo *metainfo);
 BencodeValue bencodeListDecode(BencodeParser *parser, String bencode,
-                                TorrentMetainfo *metainfo);
+                               TorrentMetainfo *metainfo);
 BencodeValue bencodeInfoDictDecode(BencodeParser *parser, String bencode,
-                                    TorrentMetainfo *metainfo);
+                                   TorrentMetainfo *metainfo);
+BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, String bencode,
+                                          TorrentMetainfo *metainfo,
+                                          TorrentTrackerResponse *resp);

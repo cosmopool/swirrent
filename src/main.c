@@ -6,8 +6,7 @@
 #include "bencode.c"
 #define STRING_IMPLEMENTATION
 #include "core.h"
-#define TORRENT_IMPLEMENTATION
-#include "torrent.h"
+#include "torrent.c"
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
@@ -41,7 +40,7 @@ i32 main(i32 argc, char **argv) {
   char *file_content = (char *)malloc(file_length * sizeof(char));
   fread(file_content, file_length, 1, file_ptr);
   fclose(file_ptr);
-  printf("FILE SIZE: %lluK\n", file_length / 1024);
+  printf("FILE SIZE: %luK\n", file_length / 1024);
 
   String torrent_file_content = {
       .len = file_length,
@@ -58,6 +57,7 @@ i32 main(i32 argc, char **argv) {
   }
   bencodeInfoDictEncode(*metainfo);
 
+  return 0;
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {

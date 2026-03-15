@@ -1,4 +1,5 @@
 #pragma once
+
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -7,7 +8,7 @@
 
 #include "bencode.h"
 #include "core.h"
-#include "teeny-sha1.c"
+#include "../lib/teeny-sha1.c"
 #include "torrent.h"
 
 #define IS_LIST bencode.data[parser->cursor] == 'l'
@@ -16,8 +17,6 @@
 #define STRING_MATCHES(key, string)                                            \
   (string.data[0] == (key)[0] && string.len == (sizeof(key) - 1) &&            \
    memcmp(string.data, key, sizeof(key) - 1) == 0)
-
-#define SHA_DIGEST_LENGTH 20
 
 String bencodeStringDecode(BencodeParser *parser, String bencode) {
   char *colon_ptr;
