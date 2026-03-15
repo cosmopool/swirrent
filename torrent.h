@@ -182,8 +182,8 @@ void Torrent_InfoMultiFileSet(TorrentInfo *info) {
 
 void Torrent_MetainfoCleanup(TorrentMetainfo *mi) {
   if (mi->info.is_single_file) {
-    assert(mi->info.multi_files.files == NULL);
-    assert(mi->info.multi_files.paths == NULL);
+    assert(!mi->info.multi_files.files);
+    assert(!mi->info.multi_files.paths);
     return;
   }
 

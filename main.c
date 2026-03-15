@@ -10,17 +10,9 @@
 #include "torrent.h"
 
 static String trackers_url[2048] = {0};
-// static String paths[2048] = {0};
 static TorrentFile files[2048] = {0};
 static TorrentPeer peers[2048] = {0};
-// static TorrentMetainfo metainfo = {0};
-static TorrentMetainfo metainfo = {
-    .trackers_url = trackers_url,
-    //     .info =
-    //         {
-    //             .multi_files = {.files = files, .paths = paths},
-    //         },
-};
+static TorrentMetainfo metainfo = {.trackers_url = trackers_url};
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
@@ -40,7 +32,7 @@ i32 main(i32 argc, char **argv) {
   }
   printf("FILE: %s\n", argv[1]);
   FILE *file_ptr = fopen(argv[1], "rb");
-  if (file_ptr == NULL) {
+  if (!file_ptr) {
     perror("fopen");
     exit(1);
   }
@@ -60,8 +52,6 @@ i32 main(i32 argc, char **argv) {
       .len = file_length,
       .data = file_content,
   };
-
-  // printf("HASH: %ld\n", hash("info"));
 
   BencodeParser parser = {0};
   assert(bencode.data[parser.cursor] == 'd');
