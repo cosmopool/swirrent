@@ -42,17 +42,11 @@ typedef struct {
   };
 } BencodeValue;
 
-void bencodeInfoDictEncode(TorrentMetainfo metainfo);
-BencodeValue bencodeDecode(BencodeParser *parser, String bencode,
-                           TorrentMetainfo *metainfo);
-isize bencodeIntegerDecode(BencodeParser *parser, String bencode);
-String bencodeStringDecode(BencodeParser *parser, String bencode);
-BencodeValue bencodeDictDecode(BencodeParser *parser, String bencode,
-                               TorrentMetainfo *metainfo);
-BencodeValue bencodeListDecode(BencodeParser *parser, String bencode,
-                               TorrentMetainfo *metainfo);
-BencodeValue bencodeInfoDictDecode(BencodeParser *parser, String bencode,
-                                   TorrentMetainfo *metainfo);
-BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, String bencode,
-                                          TorrentMetainfo *metainfo,
-                                          TorrentTrackerResponse *resp);
+void bencodeInfoDictEncode(TorrentMetainfo m);
+BencodeValue bencodeDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
+isize bencodeIntegerDecode(BencodeParser *p, String bencode);
+String bencodeStringDecode(BencodeParser *p, String bencode);
+BencodeValue bencodeDictDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
+BencodeValue bencodeListDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
+BencodeValue bencodeInfoDictDecode(BencodeParser *p, String bencode, TorrentMetainfo *m);
+BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, String bencode, TorrentMetainfo *m, TorrentTrackerResponse *r);

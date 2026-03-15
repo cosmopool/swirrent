@@ -57,9 +57,6 @@ typedef struct TorrentMetainfo {
   TorrentInfo info;
 } TorrentMetainfo;
 
-void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo,
-                         char *hash);
-
 typedef enum {
   TRACKER_EVENT_NONE,
   TRACKER_EVENT_STARTED,
@@ -150,7 +147,6 @@ TorrentMetainfo *torrentMetainfoInit();
 void torrentMetainfoCleanup(TorrentMetainfo *mi);
 void torrentMetainfoPrint(TorrentMetainfo metainfo);
 void torrentInfoMultiFileSet(TorrentInfo *info);
-void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo,
-                         char *hash);
+void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *m, char *hash_out);
 
 #endif // !_TORRENT_DEF

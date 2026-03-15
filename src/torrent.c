@@ -6,8 +6,7 @@
 #include "core.h"
 #include "torrent.h"
 
-void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo,
-                         char *hash) {
+void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo, char *hash) {
   usize real_idx = piece_idx * 20;
   for (u32 i = 0; i < 20; i += 4) {
     hash[i + 0] = metainfo->info.pieces.data[real_idx + i + 0];
@@ -24,14 +23,12 @@ void torrentInfoMultiFileSet(TorrentInfo *info) {
     usize size = sizeof(TorrentFile) * 2048;
     info->multi_files.files = malloc(size);
     assert(info->multi_files.files);
-    // memset(info->multi_files.files, 0, size);
   }
 
   if (!info->multi_files.paths) {
     usize size = sizeof(String) * 2048;
     info->multi_files.paths = malloc(size);
     assert(info->multi_files.paths);
-    // memset(info->multi_files.files, 0, size);
   }
 }
 
