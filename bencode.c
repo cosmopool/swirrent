@@ -255,53 +255,51 @@ BencodeValue bencodeInfoDictDecode(BencodeParser *parser, String bencode,
   return value;
 }
 
-BencodeValue
-bencodeTrackerResponseDecode(BencodeParser *parser, String bencode,
-                             TorrentMetainfo *metainfo,
-                             TorrentTrackerResponse *tracker_resp) {
-  if (bencode.data[parser->cursor] != 'd') {
-    tracker_resp->failure_reason = bencode;
+BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, String bencode,
+                                          TorrentMetainfo *metainfo,
+                                          TorrentTrackerResponse *resp) {
+  if (bencode.data[p->cursor] != 'd') {
+    resp->failure_reason = bencode;
     return (BencodeValue){};
   }
 
-  parser->cursor++;
-  usize dict_start = parser->cursor;
-  while (bencode.data[parser->cursor] != 'e') {
-    String key = bencodeStringDecode(parser, bencode);
+  p->cursor++;
+  usize dict_start = p->cursor;
+  while (bencode.data[p->cursor] != 'e') {
+    String key = bencodeStringDecode(p, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      tracker_resp->failure_reason = bencodeStringDecode(parser, bencode);
-      return (BencodeValue){.kind = STRING,
-                            .string = tracker_resp->failure_reason};
+      resp->failure_reason = bencodeStringDecode(p, bencode);
+      return (BencodeValue){.kind = STRING, .string = resp->failure_reason};
     }
 
     if (STRING_MATCHES("complete", key)) {
-      tracker_resp->complete = bencodeIntegerDecode(parser, bencode);
+      resp->complete = bencodeIntegerDecode(p, bencode);
       continue;
     }
 
     if (STRING_MATCHES("downloaded", key)) {
-      tracker_resp->downloaded = bencodeIntegerDecode(parser, bencode);
+      resp->downloaded = bencodeIntegerDecode(p, bencode);
       continue;
     }
 
     if (STRING_MATCHES("incomplete", key)) {
-      tracker_resp->incomplete = bencodeIntegerDecode(parser, bencode);
+      resp->incomplete = bencodeIntegerDecode(p, bencode);
       continue;
     }
 
     if (STRING_MATCHES("interval", key)) {
-      tracker_resp->interval = bencodeIntegerDecode(parser, bencode);
+      resp->interval = bencodeIntegerDecode(p, bencode);
       continue;
     }
 
     if (STRING_MATCHES("min interval", key)) {
-      tracker_resp->min_interval = bencodeIntegerDecode(parser, bencode);
+      resp->min_interval = bencodeIntegerDecode(p, bencode);
       continue;
     }
 
     if (STRING_MATCHES("peers6", key)) {
-      String peers_str = bencodeStringDecode(parser, bencode);
+      String peers_str = bencodeStringDecode(p, bencode);
       for (u32 i = 0; i < peers_str.len / 6; i++) {
         usize stride = i * 6;
         u32 ip = ((u32)peers_str.data[stride + 0] << 24) +
@@ -310,24 +308,24 @@ bencodeTrackerResponseDecode(BencodeParser *parser, String bencode,
                  ((u32)peers_str.data[stride + 3] << 0);
         u16 port = ((u16)peers_str.data[stride + 4] << 8) +
                    ((u16)peers_str.data[stride + 5] << 0);
-        tracker_resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
-        tracker_resp->peer_count++;
+        resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
+        resp->peer_count++;
       }
       continue;
     }
 
     if (STRING_MATCHES("warning message", key)) {
-      tracker_resp->warning_message = bencodeStringDecode(parser, bencode);
+      resp->warning_message = bencodeStringDecode(p, bencode);
       continue;
     }
 
     printf("-> |%.*s\n", (u32)key.len, key.data);
-    BencodeValue value = bencodeDecode(parser, bencode, metainfo);
+    BencodeValue value = bencodeDecode(p, bencode, metainfo);
     (void)value;
     continue;
   }
-  parser->cursor++;
-  usize dict_end = parser->cursor;
+  p->cursor++;
+  usize dict_end = p->cursor;
   BencodeValue value = {0};
   value.kind = DICT;
   value.string =
