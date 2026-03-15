@@ -42,9 +42,9 @@ typedef struct String {
   const char *data;
 } String;
 
-void mcl_printString(String str);
-String mcl_stringNew(usize len, const char *str);
-String mcl_stringNewC(const char *str);
+void mclPrintString(String str);
+String mclStringNew(usize len, const char *str);
+String mclStringNewC(const char *str);
 
 #ifndef STRING_IMPLEMENTATION
 #define STRING_IMPLEMENTATION
@@ -60,7 +60,7 @@ String mcl_stringNewC(const char *str);
  * @see mcl_stringNewC()
  * @return A new String struct containing the provided string data
  */
-String mcl_stringNew(usize len, const char *str) {
+String mclStringNew(usize len, const char *str) {
   assert(len > 0);
   String s = {len, str};
   return (s);
@@ -74,13 +74,13 @@ String mcl_stringNew(usize len, const char *str) {
  * @see mcl_stringNew()
  * @return A new String struct containing the provided string data
  */
-String mcl_stringNewC(const char *str) {
+String mclStringNewC(const char *str) {
   usize len = strlen(str);
   String s = {len, str};
   return s;
 }
 
-void mcl_printString(String str) {
+void mclPrintString(String str) {
   printf("%.*s", (u32)str.len, str.data);
 }
 #endif // STRING_IMPLEMENTATION
@@ -96,7 +96,7 @@ typedef struct {
 
 // ---------- Slices
 
-inline void mcl_exitMsg(u32 exit_code, const char *fmt, ...) {
+inline void mclExitMsg(u32 exit_code, const char *fmt, ...) {
   va_list args;
 
   va_start(args, fmt);

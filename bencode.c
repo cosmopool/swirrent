@@ -19,7 +19,7 @@
 
 #define SHA_DIGEST_LENGTH 20
 
-String decodeString(BencodeParser *parser, String bencode) {
+String bencodeStringDecode(BencodeParser *parser, String bencode) {
   char *colon_ptr;
   errno = 0;
   isize str_len = strtol(&bencode.data[parser->cursor], &colon_ptr, 10);
@@ -45,7 +45,7 @@ String decodeString(BencodeParser *parser, String bencode) {
   return value.string;
 }
 
-isize decodeInteger(BencodeParser *parser, String bencode) {
+isize bencodeIntegerDecode(BencodeParser *parser, String bencode) {
   assert(bencode.len - parser->cursor > 3);
   char *end_ptr;
 
@@ -64,8 +64,8 @@ isize decodeInteger(BencodeParser *parser, String bencode) {
   return integer;
 }
 
-BencodeValue decodeList(BencodeParser *parser, String bencode,
-                        TorrentMetainfo *metainfo) {
+BencodeValue bencodeListDecode(BencodeParser *parser, String bencode,
+                               TorrentMetainfo *metainfo) {
   assert(IS_LIST);
   parser->cursor++;
   usize start = parser->cursor;
@@ -81,27 +81,27 @@ BencodeValue decodeList(BencodeParser *parser, String bencode,
   return value;
 }
 
-BencodeValue decodeDict(BencodeParser *parser, String bencode,
-                        TorrentMetainfo *metainfo) {
+BencodeValue bencodeDictDecode(BencodeParser *parser, String bencode,
+                               TorrentMetainfo *metainfo) {
   assert(IS_DICT);
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = decodeString(parser, bencode);
+    String key = bencodeStringDecode(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      String str = decodeString(parser, bencode);
+      String str = bencodeStringDecode(parser, bencode);
       printf("failure reason: %.*s\n", (u32)str.len, str.data);
       return (BencodeValue){.kind = STRING, .string = str};
     }
 
     if (STRING_MATCHES("announce", key)) {
-      metainfo->announce = decodeString(parser, bencode);
+      metainfo->announce = bencodeStringDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("info", key)) {
-      decodeInfoDict(parser, bencode, metainfo);
+      bencodeInfoDictDecode(parser, bencode, metainfo);
       continue;
     }
 
@@ -115,7 +115,7 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode,
           parser->cursor++;
           while (bencode.data[parser->cursor] != 'e') {
             metainfo->trackers_url[metainfo->trackers_count] =
-                decodeString(parser, bencode);
+                bencodeStringDecode(parser, bencode);
             metainfo->trackers_count++;
           }
           parser->cursor++;
@@ -146,20 +146,20 @@ BencodeValue decodeDict(BencodeParser *parser, String bencode,
   value.string =
       (String){.len = dict_end - dict_start, .data = &bencode.data[dict_start]};
   return value;
-};
+}
 
-BencodeValue decodeFile(BencodeParser *parser, String bencode,
-                        TorrentInfoFiles *files) {
+BencodeValue bencodeFileDecode(BencodeParser *parser, String bencode,
+                               TorrentInfoFiles *files) {
   assert(IS_DICT);
 
   usize start = parser->cursor;
   parser->cursor++;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = decodeString(parser, bencode);
+    String key = bencodeStringDecode(parser, bencode);
 
     if (STRING_MATCHES("length", key)) {
       assert(files->files);
-      TorrentFile file = {.length = decodeInteger(parser, bencode)};
+      TorrentFile file = {.length = bencodeIntegerDecode(parser, bencode)};
       files->files[files->count] = file;
       continue;
     }
@@ -174,7 +174,8 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode,
       assert(IS_LIST);
       parser->cursor++;
       while (bencode.data[parser->cursor] != 'e') {
-        files->paths[parser->path_cursor++] = decodeString(parser, bencode);
+        files->paths[parser->path_cursor++] =
+            bencodeStringDecode(parser, bencode);
         files->files[file_idx].path_count++;
       }
       parser->cursor++;
@@ -189,29 +190,29 @@ BencodeValue decodeFile(BencodeParser *parser, String bencode,
   value.string =
       (String){.len = end - start + 1, .data = &bencode.data[start + 1]};
   return value;
-};
+}
 
-BencodeValue decodeInfoDict(BencodeParser *parser, String bencode,
-                            TorrentMetainfo *metainfo) {
+BencodeValue bencodeInfoDictDecode(BencodeParser *parser, String bencode,
+                                   TorrentMetainfo *metainfo) {
   assert(IS_DICT);
 
   usize start = parser->cursor;
   parser->cursor++;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = decodeString(parser, bencode);
+    String key = bencodeStringDecode(parser, bencode);
 
     if (STRING_MATCHES("name", key)) {
-      metainfo->info.name = decodeString(parser, bencode);
+      metainfo->info.name = bencodeStringDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("piece length", key)) {
-      metainfo->info.piece_length = decodeInteger(parser, bencode);
+      metainfo->info.piece_length = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("pieces", key)) {
-      metainfo->info.pieces = decodeString(parser, bencode);
+      metainfo->info.pieces = bencodeStringDecode(parser, bencode);
       continue;
     }
 
@@ -219,19 +220,19 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode,
       assert(metainfo->info.multi_files.count == 0);
       assert(!metainfo->info.multi_files.files);
       metainfo->info.is_single_file = true;
-      metainfo->info.length = decodeInteger(parser, bencode);
+      metainfo->info.length = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("files", key)) {
       assert(metainfo->info.length == 0);
       metainfo->info.is_single_file = false;
-      Torrent_InfoMultiFileSet(&metainfo->info);
+      torrentInfoMultiFileSet(&metainfo->info);
 
       assert(IS_LIST);
       parser->cursor++;
       while (bencode.data[parser->cursor] != 'e') {
-        (void)decodeFile(parser, bencode, &metainfo->info.multi_files);
+        (void)bencodeFileDecode(parser, bencode, &metainfo->info.multi_files);
       }
       parser->cursor++;
       continue;
@@ -252,11 +253,12 @@ BencodeValue decodeInfoDict(BencodeParser *parser, String bencode,
   value.string =
       (String){.len = end - start + 1, .data = &bencode.data[start + 1]};
   return value;
-};
+}
 
-BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
-                                   TorrentMetainfo *metainfo,
-                                   TorrentTrackerResponse *tracker_resp) {
+BencodeValue
+bencodeTrackerResponseDecode(BencodeParser *parser, String bencode,
+                             TorrentMetainfo *metainfo,
+                             TorrentTrackerResponse *tracker_resp) {
   if (bencode.data[parser->cursor] != 'd') {
     tracker_resp->failure_reason = bencode;
     return (BencodeValue){};
@@ -265,41 +267,41 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
   parser->cursor++;
   usize dict_start = parser->cursor;
   while (bencode.data[parser->cursor] != 'e') {
-    String key = decodeString(parser, bencode);
+    String key = bencodeStringDecode(parser, bencode);
 
     if (STRING_MATCHES("failure reason", key)) {
-      tracker_resp->failure_reason = decodeString(parser, bencode);
+      tracker_resp->failure_reason = bencodeStringDecode(parser, bencode);
       return (BencodeValue){.kind = STRING,
                             .string = tracker_resp->failure_reason};
     }
 
     if (STRING_MATCHES("complete", key)) {
-      tracker_resp->complete = decodeInteger(parser, bencode);
+      tracker_resp->complete = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("downloaded", key)) {
-      tracker_resp->downloaded = decodeInteger(parser, bencode);
+      tracker_resp->downloaded = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("incomplete", key)) {
-      tracker_resp->incomplete = decodeInteger(parser, bencode);
+      tracker_resp->incomplete = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("interval", key)) {
-      tracker_resp->interval = decodeInteger(parser, bencode);
+      tracker_resp->interval = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("min interval", key)) {
-      tracker_resp->min_interval = decodeInteger(parser, bencode);
+      tracker_resp->min_interval = bencodeIntegerDecode(parser, bencode);
       continue;
     }
 
     if (STRING_MATCHES("peers6", key)) {
-      String peers_str = decodeString(parser, bencode);
+      String peers_str = bencodeStringDecode(parser, bencode);
       for (u32 i = 0; i < peers_str.len / 6; i++) {
         usize stride = i * 6;
         u32 ip = ((u32)peers_str.data[stride + 0] << 24) +
@@ -315,7 +317,7 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
     }
 
     if (STRING_MATCHES("warning message", key)) {
-      tracker_resp->warning_message = decodeString(parser, bencode);
+      tracker_resp->warning_message = bencodeStringDecode(parser, bencode);
       continue;
     }
 
@@ -331,9 +333,9 @@ BencodeValue decodeTrackerResponse(BencodeParser *parser, String bencode,
   value.string =
       (String){.len = dict_end - dict_start, .data = &bencode.data[dict_start]};
   return value;
-};
+}
 
-char *bencodeEncodeDictKey(char *key, char *dest) {
+char *bencodeDictKeyEncode(char *key, char *dest) {
   char tmp[128] = {0};
   usize len = strnlen(key, ULONG_MAX);
   i32 encoded_len = snprintf(tmp, 128, "%ld:", len);
@@ -344,7 +346,7 @@ char *bencodeEncodeDictKey(char *key, char *dest) {
   return dest + len;
 }
 
-char *bencodeEncodeInteger(usize integer, char *dest) {
+char *bencodeIntegerEncode(usize integer, char *dest) {
   char tmp[64] = {0};
   i32 encoded_len = snprintf(tmp, 64, "i%lde", integer);
   assert(encoded_len > 0);
@@ -352,7 +354,7 @@ char *bencodeEncodeInteger(usize integer, char *dest) {
   return dest + encoded_len;
 }
 
-char *bencodeEncodeString(String string, char *dest) {
+char *bencodeStringEncode(String string, char *dest) {
   char tmp[64] = {0};
   i32 encoded_len = snprintf(tmp, 64, "%ld:", string.len);
   assert(encoded_len > 0);
@@ -362,64 +364,72 @@ char *bencodeEncodeString(String string, char *dest) {
   return dest + string.len;
 }
 
-char *bencodeEncodeDict(char *dest) {
+char *bencodeDictEncode(char *dest) {
   dest[0] = 'd';
   return dest + 1;
 }
 
-char *bencodeEncodeList(char *dest) {
+char *bencodeListEncode(char *dest) {
   dest[0] = 'l';
   return dest + 1;
 }
 
-char *bencodeEncodeClose(char *dest) {
+char *bencodeDictCloseEncode(char *dest, const char *dict_name) {
+  (void)dict_name;
+  dest[0] = 'e';
+  dest[1] = '\0';
+  return dest + 1;
+}
+
+char *bencodeListCloseEncode(char *dest, const char *dict_name) {
+  (void)dict_name;
   dest[0] = 'e';
   dest[1] = '\0';
   return dest + 1;
 }
 
 #define MAX_LEN 2 * 1025 * 1024
-void bencodeEncodeInfoSHA1(TorrentMetainfo metainfo) {
+void bencodeInfoDictEncode(TorrentMetainfo metainfo) {
   u8 hash[SHA_DIGEST_LENGTH] = {0};
   char buff[MAX_LEN] = {0};
   char *buff_slice = &buff[0];
 
-  buff_slice = bencodeEncodeDict(buff_slice);
+  buff_slice = bencodeDictEncode(buff_slice);
   if (metainfo.info.is_single_file) {
-    buff_slice = bencodeEncodeDictKey("length", buff_slice);
-    buff_slice = bencodeEncodeInteger(metainfo.info.length, buff_slice);
+    buff_slice = bencodeDictKeyEncode("length", buff_slice);
+    buff_slice = bencodeIntegerEncode(metainfo.info.length, buff_slice);
   } else {
-    buff_slice = bencodeEncodeDictKey("files", buff_slice);
-    buff_slice = bencodeEncodeList(buff_slice); // files list
+    buff_slice = bencodeDictKeyEncode("files", buff_slice);
+    buff_slice = bencodeListEncode(buff_slice); // files list
     for (u32 i = 0; i < metainfo.info.multi_files.count; i++) {
-      buff_slice = bencodeEncodeDict(buff_slice); // file dict
+      buff_slice = bencodeDictEncode(buff_slice); // file dict
 
       TorrentFile *file = metainfo.info.multi_files.files + i;
-      buff_slice = bencodeEncodeDictKey("length", buff_slice);
-      buff_slice = bencodeEncodeInteger(file->length, buff_slice);
+      buff_slice = bencodeDictKeyEncode("length", buff_slice);
+      buff_slice = bencodeIntegerEncode(file->length, buff_slice);
 
-      buff_slice = bencodeEncodeDictKey("path", buff_slice);
-      buff_slice = bencodeEncodeList(buff_slice);
+      buff_slice = bencodeDictKeyEncode("path", buff_slice);
+      buff_slice = bencodeListEncode(buff_slice);
       for (u32 j = 0; j < file->path_count; j++) {
-        buff_slice = bencodeEncodeString(*(file->path + j), buff_slice);
+        buff_slice = bencodeStringEncode(*(file->path + j), buff_slice);
       }
-      buff_slice = bencodeEncodeClose(buff_slice); // path list
+      buff_slice = bencodeListCloseEncode(buff_slice, "path"); // path list
 
-      buff_slice = bencodeEncodeClose(buff_slice); // file dict
+      buff_slice = bencodeDictCloseEncode(buff_slice, "file"); // file dict
     }
-    buff_slice = bencodeEncodeClose(buff_slice); // files list
+    buff_slice = bencodeListCloseEncode(buff_slice, "files"); // files list
   }
 
-  buff_slice = bencodeEncodeDictKey("name", buff_slice);
-  buff_slice = bencodeEncodeString(metainfo.info.name, buff_slice);
+  buff_slice = bencodeDictKeyEncode("name", buff_slice);
+  buff_slice = bencodeStringEncode(metainfo.info.name, buff_slice);
 
-  buff_slice = bencodeEncodeDictKey("piece length", buff_slice);
-  buff_slice = bencodeEncodeInteger(metainfo.info.piece_length, buff_slice);
+  buff_slice = bencodeDictKeyEncode("piece length", buff_slice);
+  buff_slice = bencodeIntegerEncode(metainfo.info.piece_length, buff_slice);
 
-  buff_slice = bencodeEncodeDictKey("pieces", buff_slice);
-  buff_slice = bencodeEncodeString(metainfo.info.pieces, buff_slice);
+  buff_slice = bencodeDictKeyEncode("pieces", buff_slice);
+  buff_slice = bencodeStringEncode(metainfo.info.pieces, buff_slice);
 
-  buff_slice = bencodeEncodeClose(buff_slice); // info dict
+  buff_slice = bencodeDictCloseEncode(buff_slice, "info"); // info dict
   usize len = buff_slice - buff;
 
   if (sha1digest(hash, NULL, (u8 *)buff, len) != 0) {
@@ -445,22 +455,22 @@ BencodeValue bencodeDecode(BencodeParser *parser, String bencode,
   while (parser->cursor < bencode.len) {
     switch (bencode.data[parser->cursor]) {
     case 'i': {
-      isize i = decodeInteger(parser, bencode);
+      isize i = bencodeIntegerDecode(parser, bencode);
       return (BencodeValue){.kind = INT, .num = i};
     }
 
     case '0' ... '9': {
-      String s = decodeString(parser, bencode);
+      String s = bencodeStringDecode(parser, bencode);
       return (BencodeValue){.kind = STRING, .string = s};
     }
 
     case 'd': {
-      BencodeValue v = decodeDict(parser, bencode, metainfo);
+      BencodeValue v = bencodeDictDecode(parser, bencode, metainfo);
       return v;
     }
 
     case 'l': {
-      BencodeValue v = decodeList(parser, bencode, metainfo);
+      BencodeValue v = bencodeListDecode(parser, bencode, metainfo);
       return v;
     }
     case 'e':

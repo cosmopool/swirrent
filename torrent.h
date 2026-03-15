@@ -59,8 +59,8 @@ typedef struct TorrentMetainfo {
   TorrentInfo info;
 } TorrentMetainfo;
 
-void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
-                          char *hash);
+void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo,
+                         char *hash);
 
 typedef enum {
   TRACKER_EVENT_NONE,
@@ -151,8 +151,8 @@ typedef struct TorrentTrackerResponse {
 #ifndef TORRENT_IMPLEMENTATION
 #define TORRENT_IMPLEMENTATION
 
-void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
-                          char *hash) {
+void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *metainfo,
+                         char *hash) {
   usize real_idx = piece_idx * 20;
   for (u32 i = 0; i < 20; i += 4) {
     hash[i + 0] = metainfo->info.pieces.data[real_idx + i + 0];
@@ -162,7 +162,7 @@ void Torrent_GetPieceHash(usize piece_idx, TorrentMetainfo *metainfo,
   }
 }
 
-void Torrent_InfoMultiFileSet(TorrentInfo *info) {
+void torrentInfoMultiFileSet(TorrentInfo *info) {
   if (info->is_single_file) return;
 
   if (!info->multi_files.files) {
@@ -180,7 +180,7 @@ void Torrent_InfoMultiFileSet(TorrentInfo *info) {
   }
 }
 
-void Torrent_MetainfoCleanup(TorrentMetainfo *mi) {
+void torrentMetainfoCleanup(TorrentMetainfo *mi) {
   if (mi->info.is_single_file) {
     assert(!mi->info.multi_files.files);
     assert(!mi->info.multi_files.paths);
@@ -194,13 +194,13 @@ void Torrent_MetainfoCleanup(TorrentMetainfo *mi) {
   free(mi->info.multi_files.paths);
 }
 
-void printMetainfo(TorrentMetainfo metainfo) {
+void torrentMetainfoPrint(TorrentMetainfo metainfo) {
   printf("meta info\n");
   printf("announce: ");
-  mcl_printString(metainfo.announce);
+  mclPrintString(metainfo.announce);
   printf("\n");
   printf("name: ");
-  mcl_printString(metainfo.info.name);
+  mclPrintString(metainfo.info.name);
   printf("\n");
   printf("info hash: %s \n", metainfo.info_hash);
   printf("piece length: %ldK\n", metainfo.info.piece_length / 1024);
@@ -209,7 +209,7 @@ void printMetainfo(TorrentMetainfo metainfo) {
     printf("length: %ldM\n", metainfo.info.length / 1024 / 1024);
 
   for (u32 i = 0; i < metainfo.trackers_count; i++) {
-    mcl_printString(metainfo.trackers_url[i]);
+    mclPrintString(metainfo.trackers_url[i]);
     printf("\n");
   }
 

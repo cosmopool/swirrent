@@ -48,28 +48,28 @@ i32 main(i32 argc, char **argv) {
   fclose(file_ptr);
   printf("FILE SIZE: %lluK\n", file_length / 1024);
 
-  String bencode = {
+  String torrent_file_content = {
       .len = file_length,
       .data = file_content,
   };
 
   BencodeParser parser = {0};
-  assert(bencode.data[parser.cursor] == 'd');
-  bencodeDecode(&parser, bencode, &metainfo);
+  assert(torrent_file_content.data[parser.cursor] == 'd');
+  bencodeDecode(&parser, torrent_file_content, &metainfo);
 
   if (!metainfo.info.is_single_file) {
     metainfo.info.multi_files.files = (TorrentFile *)&files;
   }
   if (argv[2] && memcmp(&argv[2], "-v", 2)) {
-    printMetainfo(metainfo);
+    torrentMetainfoPrint(metainfo);
   }
-  bencodeEncodeInfoSHA1(metainfo);
+  bencodeInfoDictEncode(metainfo);
 
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
     curl_global_cleanup();
-    Torrent_MetainfoCleanup(&metainfo);
+    torrentMetainfoCleanup(&metainfo);
     exit(1);
   }
 
@@ -141,7 +141,7 @@ i32 main(i32 argc, char **argv) {
 
     BencodeParser p = {0};
     TorrentTrackerResponse t_resp = {.peers = peers};
-    decodeTrackerResponse(&p, resp, &metainfo, &t_resp);
+    bencodeTrackerResponseDecode(&p, resp, &metainfo, &t_resp);
     if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
       printf(
           "===| Skipping tracker '%.*s' with warning_message: %.*s. Trying another one.\n",
@@ -180,6 +180,6 @@ i32 main(i32 argc, char **argv) {
 
   curl_easy_cleanup(curl);
   curl_global_cleanup();
-  Torrent_MetainfoCleanup(&metainfo);
+  torrentMetainfoCleanup(&metainfo);
   return (int)result;
 }
