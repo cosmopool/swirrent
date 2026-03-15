@@ -182,6 +182,7 @@ void torrentInfoMultiFileSet(TorrentInfo *info) {
 
 TorrentMetainfo *torrentMetainfoInit() {
   TorrentMetainfo *metainfo = malloc(sizeof(TorrentMetainfo));
+  memset(metainfo, 0, sizeof(TorrentMetainfo));
   metainfo->trackers_url = malloc(sizeof(String) * 2048);
   return metainfo;
 }
