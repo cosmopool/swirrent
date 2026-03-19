@@ -14,7 +14,7 @@ typedef enum : u8 {
 typedef struct {
   usize cursor;
   usize path_cursor;
-  const char *bencode;
+  char *bencode;
   usize bencode_len;
 } BencodeParser;
 

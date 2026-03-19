@@ -317,7 +317,13 @@ BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *met
       continue;
     }
 
-    if (STRING_MATCHES("peers6", key)) {
+    if (STRING_MATCHES("peers", key)) {
+      if (p->bencode[p->cursor] == 'l') {
+        (void)bencodeListDecode(p, metainfo);
+        printf("----- decoding peers: only compact form decoding is implemented yet.\n");
+        continue;
+      }
+
       String peers_str = bencodeStringDecode(p);
       for (u32 i = 0; i < peers_str.len / 6; i++) {
         usize stride = i * 6;
@@ -333,13 +339,20 @@ BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *met
       continue;
     }
 
+    if (STRING_MATCHES("peers6", key)) {
+      printf("----- decoding peers6: not implemented yet.\n");
+      (void)bencodeDecode(p, metainfo);
+      continue;
+    }
+
     if (STRING_MATCHES("warning message", key)) {
       resp->warning_message = bencodeStringDecode(p);
       continue;
     }
 
+    // skip unrecognized/unwanted key/values
     printf("-> |%.*s\n", (u32)key.len, key.data);
-    bencodeDecode(p, metainfo);
+    (void)bencodeDecode(p, metainfo);
     continue;
   }
   p->cursor++;
