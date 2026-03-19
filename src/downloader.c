@@ -1,18 +1,24 @@
 #include "bencode.h"
 #include "torrent.h"
 #include <curl/curl.h>
+#include <stdio.h>
+#include <string.h>
 
 #define STRING_IMPLEMENTATION
 #include "core.h"
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
-  printf("RESPONSE: %s\n", ptr);
-  String *r = userdata;
-  memcpy((void *)r->data + r->len, ptr, size * nmemb);
+  printf("----- RESPONSE SIZE: %ld\n", size * nmemb);
+  printf("----- RESPONSE DATA: %s\n", ptr);
+
+  String *r = (String *)userdata;
   r->len += size * nmemb;
+  memcpy((void *)r->data, ptr, r->len);
   return size * nmemb;
 }
+
+static char data[1024 * 1024] = {0};
 
 u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
   u32 result = 0;
@@ -71,7 +77,7 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
     }
     sprintf(url, "%s&compact=1", url);
 
-    char data[1024] = {0};
+    if (data[0] != '\0') memset(data, 0, 1024 * 1024);
     String resp = {.len = 0, .data = data};
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
