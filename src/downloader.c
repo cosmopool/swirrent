@@ -31,28 +31,25 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
 
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
     String tracker_url = metainfo->trackers_url[j];
+    printf("\n===| tracker (%d) url: %.*s\n", j, (u32)tracker_url.len, tracker_url.data);
     if (tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p') {
-      printf("===| Only http trackers are supported. Skipping '%.*s'\n", (u32)tracker_url.len, tracker_url.data);
+      printf("----- Only http trackers are supported. Skipping.\n");
       continue;
     }
 
     // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-    char url[1024] = {0};
 
-    metainfo->announce = metainfo->trackers_url[j];
-    if (metainfo->announce.len == 0)
-      snprintf(url, metainfo->trackers_url[0].len + 1, "%s", metainfo->trackers_url[0].data);
-    else
-      snprintf(url, metainfo->announce.len + 1, "%s", metainfo->announce.data);
-    switch (url[metainfo->announce.len - 1]) {
+    char url[1024] = {0};
+    snprintf(url, tracker_url.len + 1, "%s", tracker_url.data);
+    switch (url[tracker_url.len - 1]) {
     case '/':
-      assert(url[metainfo->announce.len] == '\0');
-      url[metainfo->announce.len - 1] = '?';
+      assert(url[tracker_url.len] == '\0');
+      url[tracker_url.len - 1] = '?';
       break;
 
     default:
-      assert(url[metainfo->announce.len] == '\0');
-      url[metainfo->announce.len] = '?';
+      assert(url[tracker_url.len] == '\0');
+      url[tracker_url.len] = '?';
       break;
     }
 
@@ -85,35 +82,33 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
 
     result = curl_easy_perform(curl);
     if (result != CURLE_OK) {
-      fprintf(stderr, "===| Communication with tracker '%.*s' failed: %s\n",
-              (u32)metainfo->announce.len, metainfo->announce.data, curl_easy_strerror(result));
+      fprintf(stderr, "----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
       continue;
     }
 
-    BencodeParser encoder = bencodeParserFromData((char *)&resp.data, resp.len);
     TorrentPeer peers[2048] = {0};
+    BencodeParser encoder = bencodeParserFromData((char *)resp.data, resp.len);
     TorrentTrackerResponse t_resp = {.peers = peers};
     bencodeTrackerResponseDecode(&encoder, metainfo, &t_resp);
 
     if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
-      printf("===| Skipping tracker '%.*s' with warning_message: %.*s. Trying another one.\n",
-             (u32)metainfo->announce.len, metainfo->announce.data,
+      printf("----- Skipping tracker with warning_message: %.*s. Trying another one.\n",
              (u32)t_resp.warning_message.len, t_resp.warning_message.data);
       continue;
     }
     if (t_resp.failure_reason.len > 0 && t_resp.peer_count == 0) {
-      printf("===| Skipping tracker '%.*s' because failed: %.*s. Trying another one.\n",
-             (u32)metainfo->announce.len, metainfo->announce.data,
+      printf("----- Skipping tracker because failed: %.*s. Trying another one.\n",
              (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
       continue;
     }
     printf("\n===| TRACKER RESPONSE\n");
-    printf("tracker url: %.*s\n", (u32)metainfo->announce.len, metainfo->announce.data);
     printf("interval: %ld\n", t_resp.interval);
     printf("min interval: %ld\n", t_resp.min_interval);
     printf("complete: %ld\n", t_resp.complete);
     printf("incomplete: %ld\n", t_resp.incomplete);
     printf("downloaded: %ld\n", t_resp.downloaded);
+    printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+    printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
     for (u32 i = 0; i < t_resp.peer_count; i++) {
       if (i == 0) printf("peers:\n");
       u32 val = t_resp.peers[i].ip;
@@ -121,8 +116,6 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
              (val & 0xFF000000) >> 24, (val & 0x00FF0000) >> 16,
              (val & 0x0000FF00) >> 8, val & 0x000000FF, t_resp.peers[i].port);
     }
-    printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
-    printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
     break;
   }
 
