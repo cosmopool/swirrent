@@ -23,7 +23,7 @@ i32 main(i32 argc, char **argv) {
   bencodeDecode(&decoder, metainfo);
   if (argv[2] && memcmp(&argv[2], "-v", 2)) torrentMetainfoPrint(*metainfo);
 
-  // encode info dictionary to hash it's value
+  // encode info dictionary to hash it's value and save in metainfo->info_hash
   bencodeInfoDictEncode(*metainfo);
 
   // return 0;
