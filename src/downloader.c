@@ -6,6 +6,11 @@
 
 #define STRING_IMPLEMENTATION
 #include "core.h"
+#include "downloader.h"
+
+static TorrentPeer peers[2048] = {0};
+static char data[1024 * 1024] = {0};
+static Options *options = {0};
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
@@ -18,15 +23,50 @@ usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
   return size * nmemb;
 }
 
-static char data[1024 * 1024] = {0};
+void downloaderOptionsSet(Options *op) {
+  options = op;
+}
+
+u32 downloaderTrackerResponseDecode(String resp, TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
+  BencodeParser encoder = bencodeParserFromData((char *)resp.data, resp.len);
+  TorrentTrackerResponse t_resp = {.peers = peers};
+  bencodeTrackerResponseDecode(&encoder, metainfo, &t_resp);
+
+  if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
+    printf("----- Skipping tracker with warning_message: %.*s. Trying another one.\n",
+           (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+    return 1;
+  }
+  if (t_resp.failure_reason.len > 0 && t_resp.peer_count == 0) {
+    printf("----- Skipping tracker because failed: %.*s. Trying another one.\n",
+           (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
+    return 1;
+  }
+  printf("\n===| TRACKER RESPONSE\n");
+  printf("interval: %ld\n", t_resp.interval);
+  printf("min interval: %ld\n", t_resp.min_interval);
+  printf("complete: %ld\n", t_resp.complete);
+  printf("incomplete: %ld\n", t_resp.incomplete);
+  printf("downloaded: %ld\n", t_resp.downloaded);
+  printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+  printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
+  for (u32 i = 0; i < t_resp.peer_count; i++) {
+    if (i == 0) printf("peers:\n");
+    u32 val = t_resp.peers[i].ip;
+    printf("  (%d)\t ip: %d.%d.%d.%d \t | port: %d\n", i,
+           (val & 0xFF000000) >> 24, (val & 0x00FF0000) >> 16,
+           (val & 0x0000FF00) >> 8, val & 0x000000FF, t_resp.peers[i].port);
+  }
+  *out = t_resp;
+  return 0;
+}
 
 u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
-    curl_global_cleanup();
-    torrentMetainfoCleanup(metainfo);
-    exit(1);
+    result = 1;
+    goto deinit;
   }
 
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
@@ -86,8 +126,6 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
       continue;
     }
 
-    TorrentPeer peers[2048] = {0};
-    BencodeParser encoder = bencodeParserFromData((char *)resp.data, resp.len);
     TorrentTrackerResponse t_resp = {.peers = peers};
     bencodeTrackerResponseDecode(&encoder, metainfo, &t_resp);
 
@@ -119,7 +157,9 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
     break;
   }
 
+deinit:
   curl_easy_cleanup(curl);
   curl_global_cleanup();
+  torrentMetainfoCleanup(metainfo);
   return result;
 }

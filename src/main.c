@@ -10,10 +10,7 @@
 
 i32 main(i32 argc, char **argv) {
   u32 result = 0;
-  bool verbose = false;
-  bool only_decode = false;
-  char *torrentFile = NULL;
-  char *rawRequestFile = NULL;
+  Options options = {0};
 
   for (i32 i = 1; i < argc; i++) {
     if (i == 1) {
@@ -21,46 +18,48 @@ i32 main(i32 argc, char **argv) {
         printf("torrent file must be provided as argument!");
         exit(1);
       }
-      torrentFile = argv[i];
+      options.torrent_path = argv[i];
       continue;
     }
 
     if (strncmp(argv[i], "--raw-response", 14) == 0) {
+      assert(!options.raw_request_output_path);
       i++;
       if (!argv[i]) {
         printf("raw request bin file must be provided as argument!");
         exit(1);
       }
-      rawRequestFile = argv[i];
+      options.raw_request_path = argv[i];
       continue;
     }
 
     if (strncmp(argv[i], "--decode-only", 13) == 0) {
-      only_decode = true;
+      options.decode_only = true;
       continue;
     }
 
     if (strncmp(argv[i], "-v", 2) == 0 || strncmp(argv[i], "--verbose", 9) == 0) {
-      verbose = true;
+      options.verbose = true;
       continue;
     }
   }
 
   // decode torrent file
-  BencodeParser decoder = bencodeParserFromFile(torrentFile);
+  BencodeParser decoder = bencodeParserFromFile(options.torrent_path);
   assert(decoder.bencode[decoder.cursor] == 'd');
   TorrentMetainfo *metainfo = torrentMetainfoInit();
   bencodeDecode(&decoder, metainfo);
-  if (verbose) torrentMetainfoPrint(*metainfo);
+  if (options.verbose) torrentMetainfoPrint(*metainfo);
 
   // encode info dictionary to hash it's value and save in metainfo->info_hash
   bencodeInfoDictEncode(*metainfo);
 
-  if (only_decode) goto deinit;
+  if (options.decode_only) goto deinit;
 
-  String rawRequest = {0};
-  if (rawRequestFile) {
-    FILE *file = fopen(rawRequestFile, "rb");
+  String raw_request = {0};
+  if (options.raw_request_path) {
+    // populate
+    FILE *file = fopen(options.raw_request_path, "rb");
     if (!file) {
       perror("fopen");
       exit(1);
