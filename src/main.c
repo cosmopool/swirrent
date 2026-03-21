@@ -9,28 +9,81 @@
 #include "torrent.c"
 
 i32 main(i32 argc, char **argv) {
-  (void)argc;
+  u32 result = 0;
+  bool verbose = false;
+  bool only_decode = false;
+  char *torrentFile = NULL;
+  char *rawRequestFile = NULL;
 
-  if (!argv[1]) {
-    printf("a torrent file must be provided as argument");
-    exit(1);
+  for (i32 i = 1; i < argc; i++) {
+    if (i == 1) {
+      if (!argv[i]) {
+        printf("torrent file must be provided as argument!");
+        exit(1);
+      }
+      torrentFile = argv[i];
+      continue;
+    }
+
+    if (strncmp(argv[i], "--raw-response", 14) == 0) {
+      i++;
+      if (!argv[i]) {
+        printf("raw request bin file must be provided as argument!");
+        exit(1);
+      }
+      rawRequestFile = argv[i];
+      continue;
+    }
+
+    if (strncmp(argv[i], "--decode-only", 13) == 0) {
+      only_decode = true;
+      continue;
+    }
+
+    if (strncmp(argv[i], "-v", 2) == 0 || strncmp(argv[i], "--verbose", 9) == 0) {
+      verbose = true;
+      continue;
+    }
   }
 
   // decode torrent file
-  BencodeParser decoder = bencodeParserFromFile(argv[1]);
+  BencodeParser decoder = bencodeParserFromFile(torrentFile);
   assert(decoder.bencode[decoder.cursor] == 'd');
   TorrentMetainfo *metainfo = torrentMetainfoInit();
   bencodeDecode(&decoder, metainfo);
-  if (argv[2] && memcmp(&argv[2], "-v", 2)) torrentMetainfoPrint(*metainfo);
+  if (verbose) torrentMetainfoPrint(*metainfo);
 
   // encode info dictionary to hash it's value and save in metainfo->info_hash
   bencodeInfoDictEncode(*metainfo);
 
-  // return 0;
+  if (only_decode) goto deinit;
 
-  // fetch peer list from available tracker
-  u32 result = downloaderTrackerPeerListFetch(metainfo);
+  String rawRequest = {0};
+  if (rawRequestFile) {
+    FILE *file = fopen(rawRequestFile, "rb");
+    if (!file) {
+      perror("fopen");
+      exit(1);
+    }
+
+    // calculate the file size
+    fseek(file, 0, SEEK_END);
+    rawRequest.len = ftell(file);
+    rewind(file);
+
+    // allocate and copy the file contents
+    rawRequest.data = (char *)malloc(rawRequest.len * sizeof(char));
+    fread((void *)rawRequest.data, rawRequest.len, 1, file);
+    fclose(file);
+  }
+
+  if (!rawRequestFile) {
+    // fetch peer list from available tracker
+    result = downloaderTrackerPeerListFetch(metainfo);
+  }
+
+deinit:
   torrentMetainfoCleanup(metainfo);
   bencodeParserCleanup(&decoder);
-  return (int)result;
+  return result;
 }
