@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "bencode.c"
+#include "torrent.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
 #include "downloader.c"
@@ -67,16 +68,23 @@ i32 main(i32 argc, char **argv) {
 
     // calculate the file size
     fseek(file, 0, SEEK_END);
-    rawRequest.len = ftell(file);
+    raw_request.len = ftell(file);
     rewind(file);
 
     // allocate and copy the file contents
-    rawRequest.data = (char *)malloc(rawRequest.len * sizeof(char));
-    fread((void *)rawRequest.data, rawRequest.len, 1, file);
+    raw_request.data = (char *)malloc(raw_request.len * sizeof(char));
+    fread((void *)raw_request.data, raw_request.len, 1, file);
     fclose(file);
   }
 
-  if (!rawRequestFile) {
+  bool was_raw_request_loaded = options.raw_request_path != 0;
+  if (was_raw_request_loaded) {
+    // raw request was load, so we jsut decode it to access the peer list
+    TorrentTrackerResponse resp = {0};
+    result = downloaderTrackerResponseDecode(raw_request, metainfo, &resp);
+  } else {
+    // no raw request was load, so we will talk to trackers for peers
+    downloaderOptionsSet(&options);
     // fetch peer list from available tracker
     result = downloaderTrackerPeerListFetch(metainfo);
   }

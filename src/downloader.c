@@ -127,33 +127,7 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
     }
 
     TorrentTrackerResponse t_resp = {.peers = peers};
-    bencodeTrackerResponseDecode(&encoder, metainfo, &t_resp);
-
-    if (t_resp.warning_message.len > 0 && t_resp.peer_count == 0) {
-      printf("----- Skipping tracker with warning_message: %.*s. Trying another one.\n",
-             (u32)t_resp.warning_message.len, t_resp.warning_message.data);
-      continue;
-    }
-    if (t_resp.failure_reason.len > 0 && t_resp.peer_count == 0) {
-      printf("----- Skipping tracker because failed: %.*s. Trying another one.\n",
-             (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
-      continue;
-    }
-    printf("\n===| TRACKER RESPONSE\n");
-    printf("interval: %ld\n", t_resp.interval);
-    printf("min interval: %ld\n", t_resp.min_interval);
-    printf("complete: %ld\n", t_resp.complete);
-    printf("incomplete: %ld\n", t_resp.incomplete);
-    printf("downloaded: %ld\n", t_resp.downloaded);
-    printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
-    printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
-    for (u32 i = 0; i < t_resp.peer_count; i++) {
-      if (i == 0) printf("peers:\n");
-      u32 val = t_resp.peers[i].ip;
-      printf("  (%d)\t ip: %d.%d.%d.%d \t | port: %d\n", i,
-             (val & 0xFF000000) >> 24, (val & 0x00FF0000) >> 16,
-             (val & 0x0000FF00) >> 8, val & 0x000000FF, t_resp.peers[i].port);
-    }
+    downloaderTrackerResponseDecode(resp, metainfo, &t_resp);
     break;
   }
 
