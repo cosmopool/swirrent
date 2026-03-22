@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "bencode.c"
+#include "bencode.h"
 #include "torrent.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
@@ -31,6 +32,18 @@ i32 main(i32 argc, char **argv) {
         exit(1);
       }
       options.raw_request_path = argv[i];
+      continue;
+    }
+
+    if (strncmp(argv[i], "--dump-response", 15) == 0) {
+      assert(!options.raw_request_path);
+      i++;
+      if (!argv[i]) {
+        printf("output file for the response dump must be provided as argument!");
+        exit(1);
+      }
+      options.dump_response = true;
+      options.raw_request_output_path = argv[i];
       continue;
     }
 

@@ -14,8 +14,22 @@ static Options *options = {0};
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
-  printf("----- RESPONSE SIZE: %ld\n", size * nmemb);
-  printf("----- RESPONSE DATA: %s\n", ptr);
+  if (options->verbose) printf("----- RESPONSE SIZE: %ld\n", size * nmemb);
+  if (options->verbose) printf("----- RESPONSE DATA: %s\n", ptr);
+  if (options->dump_response) {
+    FILE *file = fopen(options->raw_request_output_path, "wb");
+    if (file) {
+      // Write some text to the file
+      size_t written = fwrite(ptr, 1, size * nmemb, file);
+      if (written < size * nmemb) {
+        printf("Warning: Only wrote %zu of %zu bytes.\n", written, size * nmemb);
+      }
+    } else {
+      perror("fopen");
+    }
+    // Close the file
+    fclose(file);
+  }
 
   String *r = (String *)userdata;
   r->len += size * nmemb;
@@ -128,7 +142,8 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
     }
 
     TorrentTrackerResponse t_resp = {.peers = peers};
-    downloaderTrackerResponseDecode(resp, metainfo, &t_resp);
+    u32 tracker_result = downloaderTrackerResponseDecode(resp, metainfo, &t_resp);
+    if (tracker_result != 0) continue;
     break;
   }
 
