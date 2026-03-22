@@ -55,7 +55,11 @@ i32 main(i32 argc, char **argv) {
   // encode info dictionary to hash it's value and save in metainfo->info_hash
   bencodeInfoDictEncode(*metainfo);
 
-  if (options.decode_only) goto deinit;
+  if (options.decode_only) {
+    torrentMetainfoCleanup(metainfo);
+    bencodeParserCleanup(&decoder);
+    return 1;
+  }
 
   String raw_request = {0};
   if (options.raw_request_path) {
@@ -63,7 +67,9 @@ i32 main(i32 argc, char **argv) {
     FILE *file = fopen(options.raw_request_path, "rb");
     if (!file) {
       perror("fopen");
-      exit(1);
+      torrentMetainfoCleanup(metainfo);
+      bencodeParserCleanup(&decoder);
+      return 1;
     }
 
     // calculate the file size
@@ -89,7 +95,6 @@ i32 main(i32 argc, char **argv) {
     result = downloaderTrackerPeerListFetch(metainfo);
   }
 
-deinit:
   torrentMetainfoCleanup(metainfo);
   bencodeParserCleanup(&decoder);
   return result;

@@ -65,8 +65,9 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
-    result = 1;
-    goto deinit;
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    return 1;
   }
 
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
@@ -131,9 +132,7 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo) {
     break;
   }
 
-deinit:
   curl_easy_cleanup(curl);
   curl_global_cleanup();
-  torrentMetainfoCleanup(metainfo);
   return result;
 }
