@@ -24,19 +24,25 @@ i32 main(i32 argc, char **argv) {
       continue;
     }
 
-    if (strncmp(argv[i], "--load-response", 14) == 0) {
-      assert(!options.raw_request_output_path);
+    if (strncmp(argv[i], "--load-response", 14) == 0 || strncmp(argv[i], "-l", 2) == 0) {
+      if (options.raw_request_output_path) {
+        printf("you must specify only one of those: '--load-response' or '--dump-response'");
+        return 1;
+      }
       i++;
       if (!argv[i]) {
         printf("raw request bin file must be provided as argument!");
-        exit(1);
+        return 1;
       }
       options.raw_request_path = argv[i];
       continue;
     }
 
-    if (strncmp(argv[i], "--dump-response", 15) == 0) {
-      assert(!options.raw_request_path);
+    if (strncmp(argv[i], "--dump-response", 15) == 0 || strncmp(argv[i], "-d", 2) == 0) {
+      if (options.raw_request_output_path) {
+        printf("you must specify only one of those: '--load-response' or '--dump-response'");
+        return 1;
+      }
       i++;
       if (!argv[i]) {
         printf("output file for the response dump must be provided as argument!");
