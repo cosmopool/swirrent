@@ -24,7 +24,7 @@ i32 main(i32 argc, char **argv) {
       continue;
     }
 
-    if (strncmp(argv[i], "--raw-response", 14) == 0) {
+    if (strncmp(argv[i], "--load-response", 14) == 0) {
       assert(!options.raw_request_output_path);
       i++;
       if (!argv[i]) {
