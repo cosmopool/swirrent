@@ -24,7 +24,7 @@ i32 main(i32 argc, char **argv) {
       continue;
     }
 
-    if (strncmp(argv[i], "--load-response", 14) == 0 || strncmp(argv[i], "-l", 2) == 0) {
+    if (strncmp(argv[i], "--load-response", 15) == 0 || strncmp(argv[i], "-l", 2) == 0) {
       if (options.raw_request_output_path) {
         printf("you must specify only one of those: '--load-response' or '--dump-response'");
         return 1;
