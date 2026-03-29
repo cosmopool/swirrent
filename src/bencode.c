@@ -43,7 +43,7 @@ BencodeParser bencodeParserFromFile(const char *path) {
   char *content = (char *)malloc(length * sizeof(char));
   fread(content, length, 1, file);
   fclose(file);
-  printf("FILE SIZE: %ldK\n", length / 1024);
+  printf("FILE SIZE: %luK\n", length / 1024);
 
   return bencodeParserFromData(content, length);
 };
@@ -125,18 +125,18 @@ BencodeValue bencodeDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo)
       return (BencodeValue){.kind = STRING, .string = str};
     }
 
-    if (STRING_MATCHES("announce", key)) {
+    else if (STRING_MATCHES("announce", key)) {
       metainfo->announce = bencodeStringDecode(parser);
       continue;
     }
 
-    if (STRING_MATCHES("info", key)) {
+    else if (STRING_MATCHES("info", key)) {
       bencodeInfoDictDecode(parser, metainfo);
       continue;
     }
 
-    if (STRING_MATCHES("url-list", key) ||
-        STRING_MATCHES("announce-list", key)) {
+    else if (STRING_MATCHES("url-list", key) ||
+             STRING_MATCHES("announce-list", key)) {
       assert(IS_LIST);
       parser->cursor++;
       usize start = parser->cursor;
@@ -190,7 +190,7 @@ BencodeValue bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
       continue;
     }
 
-    if (STRING_MATCHES("path", key)) {
+    else if (STRING_MATCHES("path", key)) {
       assert(files->files);
       // Record where this file's paths start in the flat array
       usize file_idx = files->count;
@@ -229,17 +229,17 @@ BencodeValue bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metai
       continue;
     }
 
-    if (STRING_MATCHES("piece length", key)) {
+    else if (STRING_MATCHES("piece length", key)) {
       metainfo->info.piece_length = bencodeIntegerDecode(parser);
       continue;
     }
 
-    if (STRING_MATCHES("pieces", key)) {
+    else if (STRING_MATCHES("pieces", key)) {
       metainfo->info.pieces = bencodeStringDecode(parser);
       continue;
     }
 
-    if (STRING_MATCHES("length", key)) {
+    else if (STRING_MATCHES("length", key)) {
       assert(metainfo->info.multi_files.count == 0);
       assert(!metainfo->info.multi_files.files);
       metainfo->info.is_single_file = true;
@@ -247,7 +247,7 @@ BencodeValue bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metai
       continue;
     }
 
-    if (STRING_MATCHES("files", key)) {
+    else if (STRING_MATCHES("files", key)) {
       assert(metainfo->info.length == 0);
       metainfo->info.is_single_file = false;
       torrentInfoMultiFileSet(&metainfo->info);
@@ -292,32 +292,32 @@ BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *met
       return (BencodeValue){.kind = STRING, .string = resp->failure_reason};
     }
 
-    if (STRING_MATCHES("complete", key)) {
+    else if (STRING_MATCHES("complete", key)) {
       resp->complete = bencodeIntegerDecode(p);
       continue;
     }
 
-    if (STRING_MATCHES("downloaded", key)) {
+    else if (STRING_MATCHES("downloaded", key)) {
       resp->downloaded = bencodeIntegerDecode(p);
       continue;
     }
 
-    if (STRING_MATCHES("incomplete", key)) {
+    else if (STRING_MATCHES("incomplete", key)) {
       resp->incomplete = bencodeIntegerDecode(p);
       continue;
     }
 
-    if (STRING_MATCHES("interval", key)) {
+    else if (STRING_MATCHES("interval", key)) {
       resp->interval = bencodeIntegerDecode(p);
       continue;
     }
 
-    if (STRING_MATCHES("min interval", key)) {
+    else if (STRING_MATCHES("min interval", key)) {
       resp->min_interval = bencodeIntegerDecode(p);
       continue;
     }
 
-    if (STRING_MATCHES("peers", key)) {
+    else if (STRING_MATCHES("peers", key)) {
       if (p->bencode[p->cursor] == 'l') {
         (void)bencodeListDecode(p, metainfo);
         printf("----- decoding peers: only compact form decoding is implemented yet.\n");
@@ -325,27 +325,37 @@ BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *met
       }
 
       String peers_str = bencodeStringDecode(p);
-      for (u32 i = 0; i < peers_str.len / 6; i++) {
-        usize stride = i * 6;
-        u32 ip = ((u32)peers_str.data[stride + 0] << 24) +
-                 ((u32)peers_str.data[stride + 1] << 16) +
-                 ((u32)peers_str.data[stride + 2] << 8) +
-                 ((u32)peers_str.data[stride + 3] << 0);
-        u16 port = ((u16)peers_str.data[stride + 4] << 8) +
-                   ((u16)peers_str.data[stride + 5] << 0);
-        resp->peers[i] = (TorrentPeer){.ip = ip, .port = port};
-        resp->peer_count++;
+      if (peers_str.len % (IPV4_LEN + PORT_LEN) != 0) {
+        printf("----- decoding peers4: invalid length (must be multiple of 10).\n");
+        continue;
       }
+
+      resp->peers = peers_str;
       continue;
     }
 
-    if (STRING_MATCHES("peers6", key)) {
-      printf("----- decoding peers6: not implemented yet.\n");
-      (void)bencodeDecode(p, metainfo);
+    else if (STRING_MATCHES("peers6", key)) {
+      if (p->bencode[p->cursor] == 'l') {
+        (void)bencodeListDecode(p, metainfo);
+        printf("----- decoding peers6: only compact form decoding is implemented yet.\n");
+        continue;
+      }
+
+      String str = bencodeStringDecode(p);
+      if (str.len % (IPV6_LEN + PORT_LEN) != 0) {
+        printf("----- decoding peers6: invalid length (must be multiple of 18).\n");
+        continue;
+      }
+
+      resp->peers6 = (TorrentPeers6){
+          .data = (char *)str.data,
+          .len = str.len,
+          .count = str.len / (IPV6_LEN + PORT_LEN),
+      };
       continue;
     }
 
-    if (STRING_MATCHES("warning message", key)) {
+    else if (STRING_MATCHES("warning message", key)) {
       resp->warning_message = bencodeStringDecode(p);
       continue;
     }
@@ -417,22 +427,22 @@ char *bencodeListCloseEncode(char *dest, const char *dict_name) {
 }
 
 #define MAX_LEN 2 * 1025 * 1024
-void bencodeInfoDictEncode(TorrentMetainfo metainfo) {
+void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
   u8 hash[SHA_DIGEST_LENGTH] = {0};
   char buff[MAX_LEN] = {0};
   char *buff_slice = &buff[0];
 
   buff_slice = bencodeDictEncode(buff_slice);
-  if (metainfo.info.is_single_file) {
+  if (metainfo->info.is_single_file) {
     buff_slice = bencodeDictKeyEncode("length", buff_slice);
-    buff_slice = bencodeIntegerEncode(metainfo.info.length, buff_slice);
+    buff_slice = bencodeIntegerEncode(metainfo->info.length, buff_slice);
   } else {
     buff_slice = bencodeDictKeyEncode("files", buff_slice);
     buff_slice = bencodeListEncode(buff_slice); // files list
-    for (u32 i = 0; i < metainfo.info.multi_files.count; i++) {
+    for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
       buff_slice = bencodeDictEncode(buff_slice); // file dict
 
-      TorrentFile *file = metainfo.info.multi_files.files + i;
+      TorrentFile *file = metainfo->info.multi_files.files + i;
       buff_slice = bencodeDictKeyEncode("length", buff_slice);
       buff_slice = bencodeIntegerEncode(file->length, buff_slice);
 
@@ -449,13 +459,13 @@ void bencodeInfoDictEncode(TorrentMetainfo metainfo) {
   }
 
   buff_slice = bencodeDictKeyEncode("name", buff_slice);
-  buff_slice = bencodeStringEncode(metainfo.info.name, buff_slice);
+  buff_slice = bencodeStringEncode(metainfo->info.name, buff_slice);
 
   buff_slice = bencodeDictKeyEncode("piece length", buff_slice);
-  buff_slice = bencodeIntegerEncode(metainfo.info.piece_length, buff_slice);
+  buff_slice = bencodeIntegerEncode(metainfo->info.piece_length, buff_slice);
 
   buff_slice = bencodeDictKeyEncode("pieces", buff_slice);
-  buff_slice = bencodeStringEncode(metainfo.info.pieces, buff_slice);
+  buff_slice = bencodeStringEncode(metainfo->info.pieces, buff_slice);
 
   buff_slice = bencodeDictCloseEncode(buff_slice, "info"); // info dict
   usize len = buff_slice - buff;
@@ -466,10 +476,10 @@ void bencodeInfoDictEncode(TorrentMetainfo metainfo) {
   }
 
   for (u32 i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-    sprintf(&metainfo.info_hash[i * 2], "%02x", (u32)hash[i]);
+    sprintf(&metainfo->info_hash[i * 2], "%02x", (u32)hash[i]);
   }
 
-  printf("SHA1: %s\n", metainfo.info_hash);
+  printf("SHA1: %s\n", metainfo->info_hash);
 }
 
 BencodeValue bencodeDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {

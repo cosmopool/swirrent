@@ -5,6 +5,10 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#define IPV6_LEN 16
+#define IPV4_LEN 8
+#define PORT_LEN 2
+
 typedef struct TorrentFile {
   usize length;
   usize path_count;
@@ -116,11 +120,23 @@ typedef struct TorrentTracker {
   TrackerEvent event;
 } TorrentTracker;
 
-typedef struct TorrentPeer {
+typedef struct {
   String peer_id;
-  u32 ip;
+  String ip;
   u16 port;
 } TorrentPeer;
+
+typedef struct {
+  String peer_id;
+  String ip;
+  u16 port;
+} TorrentPeer6;
+
+typedef struct {
+  char *data;
+  usize len;
+  usize count;
+} TorrentPeers6;
 
 typedef struct TorrentTrackerResponse {
   // Tracker response fields
@@ -139,8 +155,9 @@ typedef struct TorrentTrackerResponse {
   usize incomplete;
 
   // peers - list of dictionaries corresponding to peers
-  TorrentPeer *peers;
-  usize peer_count;
+  String peers;
+  TorrentPeers6 peers6;
+  // usize peer_count;
 } TorrentTrackerResponse;
 
 TorrentMetainfo *torrentMetainfoInit();
@@ -148,5 +165,7 @@ void torrentMetainfoCleanup(TorrentMetainfo *mi);
 void torrentMetainfoPrint(TorrentMetainfo metainfo);
 void torrentInfoMultiFileSet(TorrentInfo *info);
 void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *m, char *hash_out);
+TorrentPeer torrentPeerGet(const char *peers, usize idx);
+TorrentPeer6 torrentPeer6Get(const char *peers, usize idx);
 
 #endif // !_TORRENT_DEF

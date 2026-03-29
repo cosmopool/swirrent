@@ -19,8 +19,10 @@ dap.configurations.c = {
     cwd = "${workspaceFolder}",
     stopOnEntry = false,
     args = function()
-      local file = vim.fn.input("Path to torrent file to decode: ", vim.fn.getcwd() .. "/", "file")
-      return { file }
+      -- local file = vim.fn.input("Path to torrent file to decode: ", vim.fn.getcwd() .. "/", "file")
+      -- return { file, "--dump-response", "r.bin" }
+      return { "e.torrent", "-v", "--load-response", "resp.bin" }
+      -- return { "e.torrent", "-v", "--dump-response", "resp.bin" }
     end,
     externalConsole = false, -- Critical for seeing output in nvim
     runInTerminal = false,

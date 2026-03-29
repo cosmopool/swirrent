@@ -3,6 +3,7 @@
 #include "torrent.h"
 
 #define SHA_DIGEST_LENGTH 20
+#define PEER_ID_LENGTH 20
 
 typedef enum : u8 {
   INT,
@@ -45,7 +46,7 @@ BencodeParser bencodeParserFromData(char *data, usize len);
 BencodeParser bencodeParserFromFile(const char *file_path);
 void bencodeParserCleanup(BencodeParser *bencode);
 
-void bencodeInfoDictEncode(TorrentMetainfo m);
+void bencodeInfoDictEncode(TorrentMetainfo *m);
 BencodeValue bencodeDecode(BencodeParser *p, TorrentMetainfo *m);
 isize bencodeIntegerDecode(BencodeParser *p);
 String bencodeStringDecode(BencodeParser *p);

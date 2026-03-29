@@ -72,7 +72,7 @@ i32 main(i32 argc, char **argv) {
   if (options.verbose) torrentMetainfoPrint(*metainfo);
 
   // encode info dictionary to hash it's value and save in metainfo->info_hash
-  bencodeInfoDictEncode(*metainfo);
+  bencodeInfoDictEncode(metainfo);
 
   if (options.decode_only) {
     torrentMetainfoCleanup(metainfo);
@@ -107,11 +107,17 @@ i32 main(i32 argc, char **argv) {
     // raw request was load, so we jsut decode it to access the peer list
     TorrentTrackerResponse resp = {0};
     result = downloaderTrackerResponseDecode(raw_request, metainfo, &resp);
+    if (result != 0) return result;
+
+    u8 peer_id[20] = "0a4sdfh0we10dosdf89";
+    result = downloaderPeerHandshake(&resp, metainfo->info_hash, peer_id);
+    if (result != 0) return result;
   } else {
     // no raw request was load, so we will talk to trackers for peers
     downloaderOptionsSet(&options);
     // fetch peer list from available tracker
-    result = downloaderTrackerPeerListFetch(metainfo);
+    TorrentTrackerResponse resp = {0};
+    result = downloaderTrackerPeerListFetch(metainfo, &resp);
   }
 
   torrentMetainfoCleanup(metainfo);
