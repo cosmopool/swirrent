@@ -237,7 +237,7 @@ u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *pee
   }
 
   struct sockaddr_in6 sock = {
-      .sin6_port = peer.port,
+      .sin6_port = htons(peer.port),
       .sin6_family = AF_INET6,
   };
   memcpy(&sock.sin6_addr, peer.ip.data, peer.ip.len);
