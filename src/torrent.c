@@ -110,6 +110,6 @@ TorrentPeer6 torrentPeer6Get(const char *peers, usize idx) {
           .data = (const char *)entry,
           .len = IPV6_LEN,
       },
-      .port = (entry[IPV6_LEN] << 8) | entry[IPV6_LEN + 1],
+      .port = ((u8)entry[IPV6_LEN] << 8) | (u8)entry[IPV6_LEN + 1],
   };
 }
