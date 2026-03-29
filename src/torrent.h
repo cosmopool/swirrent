@@ -56,7 +56,7 @@ typedef struct TorrentMetainfo {
   String *trackers_url;
   usize trackers_count;
 
-  char info_hash[20 * 2 + 1];
+  u8 info_hash[20];
 
   TorrentInfo info;
 } TorrentMetainfo;
@@ -72,14 +72,14 @@ typedef struct TorrentTracker {
   // info_hash
   // The 20 byte sha1 hash of the bencoded form of the info value from the
   // metainfo file. This value will almost certainly have to be escaped.
-  unsigned char info_hash[20];
+  u8 info_hash[20];
 
   // peer_id
   // A string of length 20 which this downloader uses as its id.
   // Each downloader generates its own id at random at the start
   // of a new download. This value will also almost certainly
   // have to be escaped.
-  unsigned char peer_id[20];
+  u8 peer_id[20];
 
   // ip
   // An optional parameter giving the IP (or dns name)
