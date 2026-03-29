@@ -82,7 +82,7 @@ u32 downloaderTrackerResponseDecode(String resp, TorrentMetainfo *metainfo, Torr
       printf("  (%d)\t failed to parse ipv6: %s\n", i, strerror(errno));
       continue;
     }
-    printf("  (%d)\t ipv6: %s \t | port: %d\n", i, ip_buff, ntohs(peer.port));
+    printf("  (%d)\t ip: %s \t | port: %d\n", i, ip_buff, peer.port);
   }
 
   for (u32 i = 0; i < t_resp.peers.len / (IPV4_LEN + PORT_LEN); i++) {
@@ -93,6 +93,7 @@ u32 downloaderTrackerResponseDecode(String resp, TorrentMetainfo *metainfo, Torr
       printf("  (%d)\t failed to parse ipv4: %s\n", i, strerror(errno));
       continue;
     }
+    printf("  (%d)\t ip: %s \t | port: %d\n", i, ip_buff, peer.port);
   }
   *out = t_resp;
   return 0;
@@ -182,41 +183,23 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
   return result;
 }
 
-u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, char *info_hash, u8 *peer_id) {
+u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
   assert(info_hash[0] != '\0');
-
-  // struct sockaddr_in sock;
-  // char buff[1024] = {0};
-  // char *data = {0};
 
   const char *protocol_str = "BitTorrent protocol";
   const u32 protocol_len = strlen(protocol_str);
-  const char reserved[8] = {0};
   char handshake_buff[68] = {0};
 
   u32 offset = 0;
-  // const usize bufflen = 1 + 19 + sizeof(reserved) + SHA_DIGEST_LENGTH + PEER_ID_LENGTH;
-  memcpy(handshake_buff, protocol_str, protocol_len);
-  offset += protocol_len + 1;
+  handshake_buff[offset] = 19;
+  offset++;
+
+  memcpy(handshake_buff + offset, protocol_str, protocol_len);
+  offset += protocol_len;
   assert(offset == 20);
 
-  memcpy(handshake_buff + offset, reserved, sizeof(reserved));
-  offset += sizeof(reserved);
-  // u8 t = 0;
-  // for (u32 i = 0; i < 8; i++) {
-  //   memcpy(handshake_buff + offset, &t, 1);
-  //   offset++;
-  // }
-  // u8 t = 0;
-  // handshake_buff[offset + 1] = t;
-  // handshake_buff[offset + 2] = t;
-  // handshake_buff[offset + 3] = t;
-  // handshake_buff[offset + 4] = t;
-  // handshake_buff[offset + 5] = t;
-  // handshake_buff[offset + 6] = t;
-  // handshake_buff[offset + 7] = t;
-  // handshake_buff[offset + 8] = t;
-  // offset += sizeof(reserved);
+  memset(handshake_buff + offset, 0, 8);
+  offset += 8;
   assert(offset == 28);
 
   memcpy(handshake_buff + offset, info_hash, SHA_DIGEST_LENGTH);
@@ -226,36 +209,25 @@ u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, char *info_hash, u8 *p
   memcpy(handshake_buff + offset, peer_id, PEER_ID_LENGTH);
   offset += PEER_ID_LENGTH;
   assert(offset == 68);
-  // printf("handshake hash: %s\n", info_hash);
-  // printf("handshake   id: %s\n", peer_id);
-  printf("handshake data: %.*s\n", 68, handshake_buff);
-  // FILE *file = fopen("handshake", "wb");
-  // if (file) {
-  //   // Write some text to the file
-  //   size_t written = fwrite(handshake_buff, 1, 68, file);
-  //   if (written < 68) {
-  //     printf("Warning: Only wrote %zu of 68 bytes.\n", written);
-  //   }
-  // } else {
-  //   perror("fopen");
-  // }
-  // // Close the file
-  // if (file) fclose(file);
+  FILE *file = fopen("handshake", "wb");
+  if (file) {
+    // Write some text to the file
+    size_t written = fwrite(handshake_buff, 1, 68, file);
+    if (written < 68) {
+      printf("Warning: Only wrote %zu of 68 bytes.\n", written);
+    }
+  } else {
+    perror("fopen");
+  }
+  // Close the file
+  if (file) fclose(file);
 
-  // String handshake_resp = {.data = handshake_buff, .len = strlen(handshake_buff)};
-  // char url_buff[INET6_ADDRSTRLEN] = {0};
   TorrentPeer6 peer = torrentPeer6Get(resp->peers6.data, 0);
   char ip_str[INET6_ADDRSTRLEN] = {0};
   if (!inet_ntop(AF_INET6, peer.ip.data, ip_str, sizeof(ip_str))) {
     printf("  (%d)\t failed to parse ipv6: %s\n", 0, strerror(errno));
     return -1;
   }
-  // u32 val = peer.ip;
-  // sprintf(url_buff, "%d.%d.%d.%d",
-  //         (val & 0xFF000000) >> 24,
-  //         (val & 0x00FF0000) >> 16,
-  //         (val & 0x0000FF00) >> 8,
-  //         (val & 0x000000FF) >> 0);
 
   u32 result = 0;
   u32 fd = socket(AF_INET6, SOCK_STREAM, 0);

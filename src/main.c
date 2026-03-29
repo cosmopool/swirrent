@@ -109,7 +109,12 @@ i32 main(i32 argc, char **argv) {
     result = downloaderTrackerResponseDecode(raw_request, metainfo, &resp);
     if (result != 0) return result;
 
-    u8 peer_id[20] = "0a4sdfh0we10dosdf89";
+    u8 peer_id[20] = {0};
+    // 8-byte prefix: Azureus-style "-MY0001-"
+    memcpy(peer_id, "-MY0001-", 8);
+    for (int i = 8; i < 20; i++)
+      peer_id[i] = rand() & 0xff;
+
     result = downloaderPeerHandshake(&resp, metainfo->info_hash, peer_id);
     if (result != 0) return result;
   } else {
