@@ -173,7 +173,6 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
     u32 tracker_result = downloaderTrackerResponseDecode(resp, metainfo, &t_resp);
     if (tracker_result != 0) continue;
     if (t_resp.peers.len == 0 && t_resp.peers6.len == 0) continue;
-    if (t_resp.peers.len / (IPV4_LEN + PORT_LEN) < 10 && t_resp.peers6.count < 10) continue;
     *out = t_resp;
     break;
   }

@@ -2,13 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "bencode.c"
 #include "bencode.h"
 #include "torrent.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
-#include "downloader.c"
-#include "torrent.c"
+#include "downloader.h"
 
 i32 main(i32 argc, char **argv) {
   u32 result = 0;
