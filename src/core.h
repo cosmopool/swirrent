@@ -42,10 +42,6 @@ typedef struct String {
   const char *data;
 } String;
 
-void mclPrintString(String str);
-String mclStringNew(usize len, const char *str);
-String mclStringNewC(const char *str);
-
 #ifndef STRING_IMPLEMENTATION
 #define STRING_IMPLEMENTATION
 
@@ -60,7 +56,7 @@ String mclStringNewC(const char *str);
  * @see mcl_stringNewC()
  * @return A new String struct containing the provided string data
  */
-String mclStringNew(usize len, const char *str) {
+inline String mclStringNew(usize len, const char *str) {
   assert(len > 0);
   String s = {len, str};
   return (s);
@@ -74,13 +70,13 @@ String mclStringNew(usize len, const char *str) {
  * @see mcl_stringNew()
  * @return A new String struct containing the provided string data
  */
-String mclStringNewC(const char *str) {
+inline String mclStringNewC(const char *str) {
   usize len = strlen(str);
   String s = {len, str};
   return s;
 }
 
-void mclPrintString(String str) {
+inline void mclPrintString(String str) {
   printf("%.*s", (u32)str.len, str.data);
 }
 #endif // STRING_IMPLEMENTATION

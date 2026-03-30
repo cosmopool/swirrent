@@ -17,6 +17,14 @@
 #include "core.h"
 #include "downloader.h"
 
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN 16
+#endif
+
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 4
+#endif
+
 // static usize peer_count = 0;
 // static TorrentPeer peers[2048] = {0};
 static char data[1024 * 1024] = {0};
@@ -118,8 +126,9 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
 
     // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
+    usize offset = 0;
     char url[1024] = {0};
-    snprintf(url, tracker_url.len + 1, "%s", tracker_url.data);
+    offset += snprintf(url, tracker_url.len + 1, "%s", tracker_url.data);
     switch (url[tracker_url.len - 1]) {
     case '/':
       assert(url[tracker_url.len] == '\0');
@@ -132,26 +141,26 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
       break;
     }
 
-    usize offset = 0;
+    usize hash_offset = 0;
     char encoded_hash[61] = {0};
     for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-      offset += sprintf(encoded_hash + offset, "%%%02x", (u8)metainfo->info_hash[i]);
+      hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
     }
-    sprintf(url, "%sinfo_hash=%s", url, encoded_hash);
-    sprintf(url, "%s&peer_id=%s", url, "k492jal1dkfj9oa3e8se");
-    sprintf(url, "%s&port=%s", url, "6881");
-    sprintf(url, "%s&uploaded=%s", url, "0");
-    sprintf(url, "%s&downloaded=%s", url, "0");
+    offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
+    offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", "k492jal1dkfj9oa3e8se");
+    offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
+    offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
+    offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
     if (metainfo->info.is_single_file) {
-      sprintf(url, "%s&left=%ld", url, metainfo->info.length);
+      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", metainfo->info.length);
     } else {
       usize len = 0;
       for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
         len += metainfo->info.multi_files.files[i].length;
       }
-      sprintf(url, "%s&left=%ld", url, len);
+      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", len);
     }
-    sprintf(url, "%s&compact=1", url);
+    offset += snprintf(url + offset, 1024 - offset, "&compact=1");
 
     if (data[0] != '\0') memset(data, 0, 1024 * 1024);
     String resp = {.len = 0, .data = data};
@@ -229,17 +238,17 @@ u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *pee
   }
 
   u32 result = 0;
-  u32 fd = socket(AF_INET6, SOCK_STREAM, 0);
+  i32 fd = socket(AF_INET6, SOCK_STREAM, 0);
   if (fd < 0) {
     printf("socket error: %s\n", strerror(errno));
     return fd;
   }
 
-  struct sockaddr_in6 sock = {
-      .sin6_port = htons(peer.port),
-      .sin6_family = AF_INET6,
+  struct sockaddr_in sock = {
+      .sin_port = htons(peer.port),
+      .sin_family = AF_INET,
   };
-  memcpy(&sock.sin6_addr, peer.ip.data, peer.ip.len);
+  memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
 
   u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
   if (c != 0) {

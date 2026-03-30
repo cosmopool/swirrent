@@ -1,5 +1,3 @@
-#pragma once
-
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -20,6 +18,8 @@
    memcmp(string.data, key, sizeof(key) - 1) == 0)
 
 BencodeParser bencodeParserFromData(char *data, usize len) {
+  assert(data);
+  assert(len > 0);
   BencodeParser parser = {0};
   parser.bencode = data;
   parser.bencode_len = len;
@@ -37,11 +37,12 @@ BencodeParser bencodeParserFromFile(const char *path) {
   // calculate the file size
   fseek(file, 0, SEEK_END);
   u64 length = ftell(file);
+  assert(length > 0);
   rewind(file);
 
   // allocate and copy the file contents
   char *content = (char *)malloc(length * sizeof(char));
-  fread(content, length, 1, file);
+  assert(fread(content, length, 1, file) > 0);
   fclose(file);
   printf("FILE SIZE: %luK\n", length / 1024);
 
@@ -49,6 +50,7 @@ BencodeParser bencodeParserFromFile(const char *path) {
 };
 
 void bencodeParserCleanup(BencodeParser *bencode) {
+  assert(bencode != NULL);
   free((void *)bencode->bencode);
 }
 
@@ -139,7 +141,7 @@ BencodeValue bencodeDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo)
              STRING_MATCHES("announce-list", key)) {
       assert(IS_LIST);
       parser->cursor++;
-      usize start = parser->cursor;
+      // usize start = parser->cursor;
       while (parser->bencode[parser->cursor] != 'e') {
         if (parser->bencode[parser->cursor] == 'l') {
           parser->cursor++;
@@ -155,11 +157,11 @@ BencodeValue bencodeDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo)
         metainfo->trackers_url[metainfo->trackers_count] = v.string;
         metainfo->trackers_count++;
       }
-      usize end = parser->cursor;
+      // usize end = parser->cursor;
       parser->cursor++;
-      BencodeValue value = {0};
-      value.kind = LIST;
-      value.string = (String){.len = end - start, .data = &parser->bencode[start]};
+      // BencodeValue value = {0};
+      // value.kind = LIST;
+      // value.string = (String){.len = end - start, .data = &parser->bencode[start]};
       continue;
     }
 
@@ -375,7 +377,7 @@ BencodeValue bencodeTrackerResponseDecode(BencodeParser *p, TorrentMetainfo *met
 
 char *bencodeDictKeyEncode(char *key, char *dest) {
   char tmp[128] = {0};
-  usize len = strnlen(key, ULONG_MAX);
+  usize len = strlen(key);
   i32 encoded_len = snprintf(tmp, 128, "%ld:", len);
   assert(encoded_len > 0);
   memcpy(dest, tmp, encoded_len);
