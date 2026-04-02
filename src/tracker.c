@@ -113,7 +113,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out) {
 
     usize offset = 0;
     char url[1024] = {0};
-    offset += snprintf(url, tracker_url.len + 1, "%s", tracker_url.data);
+    offset += snprintf(url, tracker_url.len + 1, "%.*s", (i32)tracker_url.len, tracker_url.data);
     switch (url[tracker_url.len - 1]) {
     case '/':
       assert(url[tracker_url.len] == '\0');
