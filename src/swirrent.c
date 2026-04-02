@@ -29,6 +29,10 @@ i32 swirrentMain(SwirrentContext *ctx) {
   // decode torrent file
   assert(decoder.bencode[decoder.cursor] == 'd');
   torrentMetainfoDecode(&decoder, ctx->metainfo);
+  if (ctx->metainfo->trackers_count == 0) {
+    printf("trackerless torrents are not implemented yet.");
+    return 1;
+  }
   torrentInfoHashGenerate(ctx->metainfo);
   if (ctx->options.verbose) torrentMetainfoPrint(*ctx->metainfo);
 
