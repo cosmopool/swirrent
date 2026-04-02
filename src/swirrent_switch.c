@@ -29,7 +29,7 @@ int main() {
 
   SwirrentOptions options = {
       .verbose = true,
-      .torrent_path = "/torrent/e.torrent",
+      .torrent_path = "/torrents/e.torrent",
   };
   SwirrentContext ctx = swirrentInit(options);
 
