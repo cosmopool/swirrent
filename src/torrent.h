@@ -1,13 +1,13 @@
-#ifndef _TORRENT_DEF
-#define _TORRENT_DEF
+#pragma once
 
+#include "bencode.h"
 #include "core.h"
+
 #include <assert.h>
 #include <stdbool.h>
 
-#define IPV6_LEN 16
-#define IPV4_LEN 8
-#define PORT_LEN 2
+#define SHA_DIGEST_LENGTH 20
+#define PEER_ID_LENGTH 20
 
 typedef struct TorrentFile {
   usize length;
@@ -45,7 +45,6 @@ typedef struct TorrentInfo {
   union {
     // length - The length of the file, in bytes.
     usize length;
-
     TorrentInfoFiles multi_files;
   };
 } TorrentInfo;
@@ -55,10 +54,8 @@ typedef struct TorrentMetainfo {
   String announce;
   String *trackers_url;
   usize trackers_count;
-
-  u8 info_hash[20];
-
   TorrentInfo info;
+  u8 info_hash[20];
 } TorrentMetainfo;
 
 typedef enum {
@@ -132,34 +129,6 @@ typedef struct {
   u16 port;
 } TorrentPeer6;
 
-typedef struct {
-  char *data;
-  usize len;
-  usize count;
-} TorrentPeers6;
-
-typedef struct TorrentTrackerResponse {
-  // Tracker response fields
-  // failure reason - optional human readable string explaining why the query
-  // failed
-  String failure_reason;
-  String warning_message;
-
-  // interval - number of seconds the downloader should wait between regular
-  // rerequests
-  usize interval;
-  usize min_interval;
-
-  usize complete;
-  usize downloaded;
-  usize incomplete;
-
-  // peers - list of dictionaries corresponding to peers
-  String peers;
-  TorrentPeers6 peers6;
-  // usize peer_count;
-} TorrentTrackerResponse;
-
 TorrentMetainfo *torrentMetainfoInit();
 void torrentMetainfoCleanup(TorrentMetainfo *mi);
 void torrentMetainfoPrint(TorrentMetainfo metainfo);
@@ -168,4 +137,10 @@ void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *m, char *hash_out);
 TorrentPeer torrentPeerGet(const char *peers, usize idx);
 TorrentPeer6 torrentPeer6Get(const char *peers, usize idx);
 
-#endif // !_TORRENT_DEF
+void torrentMetainfoDecode(BencodeParser *p, TorrentMetainfo *out);
+
+void torrentDictDecode(BencodeParser *p, TorrentMetainfo *out);
+void torrentListDecode(BencodeParser *p, TorrentMetainfo *out);
+void torrentInfoDictDecode(BencodeParser *p, TorrentMetainfo *out);
+
+void torrentInfoDictEncode(TorrentMetainfo *m);

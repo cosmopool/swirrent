@@ -28,7 +28,7 @@
 // static usize peer_count = 0;
 // static TorrentPeer peers[2048] = {0};
 static char data[1024 * 1024] = {0};
-static Options *options = {0};
+static SwirrentOptions *options = {0};
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
@@ -55,14 +55,14 @@ usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
   return size * nmemb;
 }
 
-void downloaderOptionsSet(Options *op) {
+void downloaderOptionsSet(SwirrentOptions *op) {
   options = op;
 }
 
-u32 downloaderTrackerResponseDecode(String resp, TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
+u32 downloaderTrackerResponseDecode(String resp, TrackerResponse *out) {
   BencodeParser encoder = bencodeParserFromData((char *)resp.data, resp.len);
-  TorrentTrackerResponse t_resp = {0};
-  bencodeTrackerResponseDecode(&encoder, metainfo, &t_resp);
+  TrackerResponse t_resp = {0};
+  trackerResponseDecode(&encoder, &t_resp);
 
   if (t_resp.warning_message.len > 0 && t_resp.peers.len == 0) {
     printf("----- Skipping tracker with warning_message: %.*s. Trying another one.\n",
@@ -107,7 +107,7 @@ u32 downloaderTrackerResponseDecode(String resp, TorrentMetainfo *metainfo, Torr
   return 0;
 }
 
-u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
+u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out) {
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -178,8 +178,8 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
       continue;
     }
 
-    TorrentTrackerResponse t_resp = {0};
-    u32 tracker_result = downloaderTrackerResponseDecode(resp, metainfo, &t_resp);
+    TrackerResponse t_resp = {0};
+    u32 tracker_result = downloaderTrackerResponseDecode(resp, &t_resp);
     if (tracker_result != 0) continue;
     if (t_resp.peers.len == 0 && t_resp.peers6.len == 0) continue;
     *out = t_resp;
@@ -191,7 +191,7 @@ u32 downloaderTrackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResp
   return result;
 }
 
-u32 downloaderPeerHandshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+u32 downloaderPeerHandshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
   assert(info_hash[0] != '\0');
 
   const char *protocol_str = "BitTorrent protocol";

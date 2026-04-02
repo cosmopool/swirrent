@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define IPV6_LEN 16
+#define IPV4_LEN 8
+#define PORT_LEN 2
+
 // core types
 typedef int8_t i8;
 typedef int16_t i16;
@@ -76,7 +80,7 @@ inline String mclStringNewC(const char *str) {
   return s;
 }
 
-inline void mclPrintString(String str) {
+static inline void mclPrintString(String str) {
   printf("%.*s", (u32)str.len, str.data);
 }
 #endif // STRING_IMPLEMENTATION

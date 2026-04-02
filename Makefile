@@ -42,28 +42,29 @@ include $(DEVKITPRO)/libnx/switch_rules
 #   NACP building is skipped as well.
 #---------------------------------------------------------------------------------
 
-TARGET		:=	$(notdir $(CURDIR))
-BUILD		:=	build
-SOURCES		:=  src
-DATA		:=	data
-INCLUDES	:=	include
+TARGET			:=	$(notdir $(CURDIR))
+BUILD				:=	build
+SOURCES			:=  src
+DATA				:=	data
+INCLUDES		:=	include
 #ROMFS	:=	romfs
+APP_TITLEID := 01000050068E7000
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+ARCH	 := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
-CFLAGS	:=	-g -Wall -O2 -ffunction-sections \
-			$(ARCH) $(DEFINES) `curl-config --cflags`
-
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__
-CFLAGS += -std=c99
+CFLAGS += -g -O0
+CFLAGS := -ffunction-sections
+CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -Werror
 CFLAGS += -Wpointer-arith
 CFLAGS += -Wcast-align
 CFLAGS += -Wunreachable-code
+CFLAGS := $(ARCH) $(DEFINES) `curl-config --cflags`
+CFLAGS +=	$(INCLUDE) -D__SWITCH__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
@@ -94,7 +95,7 @@ export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
-CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CFILES		:=	$(filter-out swirrent_pc.c,$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c))))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
@@ -166,10 +167,16 @@ ifneq ($(ROMFS),)
 	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: $(BUILD) clean all
+.PHONY: $(BUILD) clean all deploy watch
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
+
+deploy: $(BUILD)
+	@./deploy.sh
+
+watch:
+	@./deploy.sh --watch
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@

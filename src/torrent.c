@@ -1,8 +1,11 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "../lib/teeny-sha1.c"
+#include "bencode.h"
 #include "core.h"
 #include "torrent.h"
 
@@ -34,8 +37,10 @@ void torrentInfoMultiFileSet(TorrentInfo *info) {
 
 TorrentMetainfo *torrentMetainfoInit() {
   TorrentMetainfo *metainfo = malloc(sizeof(TorrentMetainfo));
-  memset(metainfo, 0, sizeof(TorrentMetainfo));
+  *metainfo = (TorrentMetainfo){0};
+  // memset(metainfo, 0, sizeof(TorrentMetainfo));
   metainfo->trackers_url = malloc(sizeof(String) * 2048);
+  memset(metainfo->trackers_url, 0, sizeof(String) * 2048);
   return metainfo;
 }
 
@@ -112,4 +117,248 @@ TorrentPeer6 torrentPeer6Get(const char *peers, usize idx) {
       },
       .port = ((u8)entry[IPV6_LEN] << 8) | (u8)entry[IPV6_LEN + 1],
   };
+}
+
+void bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
+  assert(IS_DICT);
+
+  parser->cursor++;
+  while (parser->bencode[parser->cursor] != 'e') {
+    String key = bencodeStringDecode(parser);
+
+    if (STRING_MATCHES("length", key)) {
+      assert(files->files);
+      TorrentFile file = {.length = bencodeIntegerDecode(parser)};
+      files->files[files->count] = file;
+      continue;
+    }
+
+    else if (STRING_MATCHES("path", key)) {
+      assert(files->files);
+      // Record where this file's paths start in the flat array
+      usize file_idx = files->count;
+      files->files[file_idx].path = &files->paths[parser->path_cursor];
+
+      // Manually consume the list 'l...e' inline, no recursive decode
+      assert(IS_LIST);
+      parser->cursor++;
+      while (parser->bencode[parser->cursor] != 'e') {
+        files->paths[parser->path_cursor++] = bencodeStringDecode(parser);
+        files->files[file_idx].path_count++;
+      }
+      parser->cursor++;
+      files->count++;
+      continue;
+    }
+  }
+  parser->cursor++;
+}
+
+void bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
+  assert(IS_DICT);
+
+  usize start = parser->cursor;
+  parser->cursor++;
+  while (parser->bencode[parser->cursor] != 'e') {
+    String key = bencodeStringDecode(parser);
+
+    if (STRING_MATCHES("name", key)) {
+      metainfo->info.name = bencodeStringDecode(parser);
+      continue;
+    }
+
+    else if (STRING_MATCHES("piece length", key)) {
+      metainfo->info.piece_length = bencodeIntegerDecode(parser);
+      continue;
+    }
+
+    else if (STRING_MATCHES("pieces", key)) {
+      metainfo->info.pieces = bencodeStringDecode(parser);
+      continue;
+    }
+
+    else if (STRING_MATCHES("length", key)) {
+      assert(metainfo->info.multi_files.count == 0);
+      assert(!metainfo->info.multi_files.files);
+      metainfo->info.is_single_file = true;
+      metainfo->info.length = bencodeIntegerDecode(parser);
+      continue;
+    }
+
+    else if (STRING_MATCHES("files", key)) {
+      assert(metainfo->info.length == 0);
+      metainfo->info.is_single_file = false;
+      torrentInfoMultiFileSet(&metainfo->info);
+
+      assert(IS_LIST);
+      parser->cursor++;
+      while (parser->bencode[parser->cursor] != 'e') {
+        bencodeFileDecode(parser, &metainfo->info.multi_files);
+      }
+      parser->cursor++;
+      continue;
+    }
+
+    printf("-> info|%.*s\n", (u32)key.len, key.data);
+    bencodeValueSkip(parser);
+    continue;
+  }
+  parser->cursor++;
+  assert(parser->bencode[start] == 'd');
+  assert(parser->bencode[parser->cursor - 1] == 'e');
+}
+
+void torrentMetainfoDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
+  (void)metainfo;
+  assert(IS_DICT);
+  parser->cursor++;
+  while (parser->bencode[parser->cursor] != 'e') {
+    String key = bencodeStringDecode(parser);
+
+    if (STRING_MATCHES("failure reason", key)) {
+      String str = bencodeStringDecode(parser);
+      printf("failure reason: %.*s\n", (u32)str.len, str.data);
+      continue;
+    }
+
+    else if (STRING_MATCHES("announce", key)) {
+      metainfo->announce = bencodeStringDecode(parser);
+      continue;
+    }
+
+    else if (STRING_MATCHES("info", key)) {
+      bencodeInfoDictDecode(parser, metainfo);
+      continue;
+    }
+
+    else if (STRING_MATCHES("url-list", key) ||
+             STRING_MATCHES("announce-list", key)) {
+      assert(IS_LIST);
+      parser->cursor++;
+      while (parser->bencode[parser->cursor] != 'e') {
+        if (parser->bencode[parser->cursor] == 'l') {
+          parser->cursor++;
+          while (parser->bencode[parser->cursor] != 'e') {
+            metainfo->trackers_url[metainfo->trackers_count] = bencodeStringDecode(parser);
+            metainfo->trackers_count++;
+          }
+          parser->cursor++;
+          continue;
+        }
+        metainfo->trackers_url[metainfo->trackers_count] = bencodeStringDecode(parser);
+        metainfo->trackers_count++;
+      }
+      parser->cursor++;
+      continue;
+    }
+
+    printf("-> |%.*s\n", (u32)key.len, key.data);
+    bencodeValueSkip(parser);
+    continue;
+  }
+  parser->cursor++;
+}
+
+char *bencodeDictKeyEncode(char *key, char *dest) {
+  char tmp[128] = {0};
+  usize len = strlen(key);
+  i32 encoded_len = snprintf(tmp, 128, "%ld:", len);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  dest += encoded_len;
+  memcpy(dest, key, len);
+  return dest + len;
+}
+
+char *bencodeIntegerEncode(usize integer, char *dest) {
+  char tmp[64] = {0};
+  i32 encoded_len = snprintf(tmp, 64, "i%lde", integer);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  return dest + encoded_len;
+}
+
+char *bencodeStringEncode(String string, char *dest) {
+  char tmp[64] = {0};
+  i32 encoded_len = snprintf(tmp, 64, "%ld:", string.len);
+  assert(encoded_len > 0);
+  memcpy(dest, tmp, encoded_len);
+  dest += encoded_len;
+  memcpy(dest, string.data, string.len);
+  return dest + string.len;
+}
+
+char *bencodeDictEncode(char *dest) {
+  dest[0] = 'd';
+  return dest + 1;
+}
+
+char *bencodeListEncode(char *dest) {
+  dest[0] = 'l';
+  return dest + 1;
+}
+
+char *bencodeDictCloseEncode(char *dest, const char *dict_name) {
+  (void)dict_name;
+  dest[0] = 'e';
+  dest[1] = '\0';
+  return dest + 1;
+}
+
+char *bencodeListCloseEncode(char *dest, const char *dict_name) {
+  (void)dict_name;
+  dest[0] = 'e';
+  dest[1] = '\0';
+  return dest + 1;
+}
+
+#define MAX_LEN 2 * 1024 * 1024
+void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
+  char buff[MAX_LEN] = {0};
+  char *buff_slice = &buff[0];
+
+  buff_slice = bencodeDictEncode(buff_slice);
+  if (metainfo->info.is_single_file) {
+    buff_slice = bencodeDictKeyEncode("length", buff_slice);
+    buff_slice = bencodeIntegerEncode(metainfo->info.length, buff_slice);
+  } else {
+    buff_slice = bencodeDictKeyEncode("files", buff_slice);
+    buff_slice = bencodeListEncode(buff_slice); // files list
+    for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
+      buff_slice = bencodeDictEncode(buff_slice); // file dict
+
+      TorrentFile *file = metainfo->info.multi_files.files + i;
+      buff_slice = bencodeDictKeyEncode("length", buff_slice);
+      buff_slice = bencodeIntegerEncode(file->length, buff_slice);
+
+      buff_slice = bencodeDictKeyEncode("path", buff_slice);
+      buff_slice = bencodeListEncode(buff_slice);
+      for (u32 j = 0; j < file->path_count; j++) {
+        buff_slice = bencodeStringEncode(*(file->path + j), buff_slice);
+      }
+      buff_slice = bencodeListCloseEncode(buff_slice, "path"); // path list
+
+      buff_slice = bencodeDictCloseEncode(buff_slice, "file"); // file dict
+    }
+    buff_slice = bencodeListCloseEncode(buff_slice, "files"); // files list
+  }
+
+  buff_slice = bencodeDictKeyEncode("name", buff_slice);
+  buff_slice = bencodeStringEncode(metainfo->info.name, buff_slice);
+
+  buff_slice = bencodeDictKeyEncode("piece length", buff_slice);
+  buff_slice = bencodeIntegerEncode(metainfo->info.piece_length, buff_slice);
+
+  buff_slice = bencodeDictKeyEncode("pieces", buff_slice);
+  buff_slice = bencodeStringEncode(metainfo->info.pieces, buff_slice);
+
+  buff_slice = bencodeDictCloseEncode(buff_slice, "info"); // info dict
+                                                           //
+  usize len = buff_slice - buff;
+  if (sha1digest(metainfo->info_hash, NULL, (u8 *)buff, len) != 0) {
+    printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!", __FILE__, __LINE__);
+    exit(1);
+  }
+
+  printf("SHA1: %s\n", metainfo->info_hash);
 }
