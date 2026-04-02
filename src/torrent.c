@@ -120,7 +120,7 @@ TorrentPeer6 torrentPeer6Get(const char *peers, usize idx) {
 }
 
 void bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
-  assert(IS_DICT);
+  assert(bencodeParserCurrent(parser) == 'd');
 
   parser->cursor++;
   while (parser->bencode[parser->cursor] != 'e') {
@@ -140,7 +140,7 @@ void bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
       files->files[file_idx].path = &files->paths[parser->path_cursor];
 
       // Manually consume the list 'l...e' inline, no recursive decode
-      assert(IS_LIST);
+      assert(bencodeParserCurrent(parser) == 'l');
       parser->cursor++;
       while (parser->bencode[parser->cursor] != 'e') {
         files->paths[parser->path_cursor++] = bencodeStringDecode(parser);
@@ -155,7 +155,7 @@ void bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
 }
 
 void bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
-  assert(IS_DICT);
+  assert(bencodeParserCurrent(parser) == 'd');
 
   usize start = parser->cursor;
   parser->cursor++;
@@ -190,7 +190,7 @@ void bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
       metainfo->info.is_single_file = false;
       torrentInfoMultiFileSet(&metainfo->info);
 
-      assert(IS_LIST);
+      assert(bencodeParserCurrent(parser) == 'l');
       parser->cursor++;
       while (parser->bencode[parser->cursor] != 'e') {
         bencodeFileDecode(parser, &metainfo->info.multi_files);
@@ -209,8 +209,7 @@ void bencodeInfoDictDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
 }
 
 void torrentMetainfoDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
-  (void)metainfo;
-  assert(IS_DICT);
+  assert(bencodeParserCurrent(parser) == 'd');
   parser->cursor++;
   while (parser->bencode[parser->cursor] != 'e') {
     String key = bencodeStringDecode(parser);
@@ -233,7 +232,7 @@ void torrentMetainfoDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
 
     else if (STRING_MATCHES("url-list", key) ||
              STRING_MATCHES("announce-list", key)) {
-      assert(IS_LIST);
+      assert(bencodeParserCurrent(parser) == 'l');
       parser->cursor++;
       while (parser->bencode[parser->cursor] != 'e') {
         if (parser->bencode[parser->cursor] == 'l') {

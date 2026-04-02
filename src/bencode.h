@@ -2,8 +2,8 @@
 
 #include "core.h"
 
-#define IS_LIST bencodeParserCurrent(decoder) == 'l'
-#define IS_DICT bencodeParserCurrent(decoder) == 'd'
+#define IS_LIST(x) (x) == 'l'
+#define IS_DICT(x) (x) == 'd'
 #define STRING_MATCHES(key, string)                                 \
   (string.data[0] == (key)[0] && string.len == (sizeof(key) - 1) && \
    memcmp(string.data, key, sizeof(key) - 1) == 0)

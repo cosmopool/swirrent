@@ -105,7 +105,8 @@ void bencodeValueSkip(BencodeParser *decoder) {
 
     case 'l':
     case 'd': {
-      assert(IS_LIST || IS_DICT);
+      char c = bencodeParserCurrent(decoder);
+      assert(c == 'l' || c == 'd');
       decoder->cursor++;
       while (bencodeParserCurrent(decoder) != 'e') {
         bencodeValueSkip(decoder);
