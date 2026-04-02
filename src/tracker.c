@@ -1,12 +1,17 @@
+#include "torrent.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <curl/curl.h>
 #include <errno.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/unistd.h>
 #include <unistd.h>
 
@@ -92,6 +97,159 @@ TorrentTrackerResponse trackerResponseDecode(String resp) {
   return t_resp;
 }
 
+#include <string.h>
+
+void parse_tracker_url(String url, char *host, size_t host_len, char *port, size_t port_len) {
+  // Skip "udp://" or "http://"
+  const char *p = strstr(url.data, "://");
+  if (p)
+    p += 3;
+  else
+    p = url.data;
+
+  // Find end of host (':' for port, '/' for path)
+  const char *end = p;
+  while (*end && *end != ':' && *end != '/') end++;
+
+  // Extract host
+  size_t host_size = end - p;
+  if (host_size >= host_len) host_size = host_len - 1;
+  strncpy(host, p, host_size);
+  host[host_size] = '\0';
+
+  // Extract port if present
+  if (*end == ':') {
+    const char *port_start = end + 1;
+    const char *port_end = strchr(port_start, '/');
+    size_t port_size = port_end ? port_end - port_start : strlen(port_start);
+    if (port_size >= port_len) port_size = port_len - 1;
+    strncpy(port, port_start, port_size);
+    port[port_size] = '\0';
+  } else {
+    strcpy(port, "80"); // default
+  }
+}
+
+TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *metainfo, struct pollfd udp_tracker_pfds[200]) {
+  assert(tracker_url.data[0] == 'u');
+  assert(tracker_url.data[1] == 'd');
+  assert(tracker_url.data[2] == 'p');
+
+  TorrentTrackerResponse r = {0};
+  struct addrinfo *res = {0};
+  struct addrinfo sock = {
+      .ai_family = AF_INET,
+      .ai_socktype = SOCK_DGRAM,
+  };
+
+  char host[256], port[16];
+  parse_tracker_url(tracker_url, host, sizeof(host), port, sizeof(port));
+  printf("\thost: %s\n", host);
+  printf("\tport: %s\n", port);
+  i32 get_addr_status;
+  if ((get_addr_status = getaddrinfo(host, port, &sock, &res)) != 0) {
+    fprintf(stderr, "\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
+    return r;
+  }
+
+  i32 fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+  if (fd < 0) {
+    printf("\tsocket error: %s\n", strerror(errno));
+    goto cleanup;
+  }
+
+  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
+  if (c != 0) {
+    printf("\tconnection with tracker failed: %s\n", strerror(errno));
+    goto cleanup;
+  }
+
+#define BUFF_SIZE 16
+  i8 handshake_buff[BUFF_SIZE] = {0};
+  usize protocol_magic_value = 0x41727101980;
+  memcpy(handshake_buff, &protocol_magic_value, 16);
+  for (i32 i = 0; i < 8; i++)
+    handshake_buff[sizeof(protocol_magic_value) + 1 + i] = rand() & 0xff;
+  if (send(fd, handshake_buff, sizeof(handshake_buff), 0) < 0) {
+    printf("failed to send handshake to tracker: %s\n", strerror(errno));
+    goto cleanup;
+  }
+
+  char resp_buff[1024] = {0};
+  if (recv(fd, resp_buff, 1023, 0) < 0) {
+    printf("failed to read tracker response: %s\n", strerror(errno));
+    goto cleanup;
+  }
+  printf("tracker response: %s\n", resp_buff);
+
+cleanup:
+  close(fd);
+  return r;
+}
+
+TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentMetainfo *metainfo) {
+  assert(tracker_url.data[0] == 'h');
+  assert(tracker_url.data[1] == 't');
+  assert(tracker_url.data[2] == 't');
+  assert(tracker_url.data[3] == 'p');
+
+  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+  usize offset = 0;
+  char url[1024] = {0};
+  offset += snprintf(url, tracker_url.len + 1, "%.*s", (i32)tracker_url.len, tracker_url.data);
+  switch (url[tracker_url.len - 1]) {
+  case '/':
+    assert(url[tracker_url.len] == '\0');
+    url[tracker_url.len - 1] = '?';
+    break;
+
+  default:
+    assert(url[tracker_url.len] == '\0');
+    url[tracker_url.len] = '?';
+    break;
+  }
+
+  usize hash_offset = 0;
+  char encoded_hash[61] = {0};
+  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+    hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
+  }
+  offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
+  offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", "k492jal1dkfj9oa3e8se");
+  offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
+  offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
+  offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
+  if (metainfo->info.is_single_file) {
+    offset += snprintf(url + offset, 1024 - offset, "&left=%ld", metainfo->info.length);
+  } else {
+    usize len = 0;
+    for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
+      len += metainfo->info.multi_files.files[i].length;
+    }
+    offset += snprintf(url + offset, 1024 - offset, "&left=%ld", len);
+  }
+  offset += snprintf(url + offset, 1024 - offset, "&compact=1");
+
+  if (data[0] != '\0') memset(data, 0, 1024 * 1024);
+  String raw_resp = {.len = 0, .data = data};
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &raw_resp);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)10);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)10);
+  curl_easy_setopt(curl, CURLOPT_SERVER_RESPONSE_TIMEOUT, (long)5);
+  curl_easy_setopt(curl, CURLOPT_ACCEPTTIMEOUT_MS, (long)10000);
+
+  TorrentTrackerResponse resp = {0};
+  i32 result = curl_easy_perform(curl);
+  if (result != CURLE_OK) {
+    fprintf(stderr, "----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
+    return resp;
+  }
+  return trackerResponseDecode(raw_resp);
+}
+
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
   u32 result = 0;
   CURL *curl = curl_easy_init();
@@ -101,71 +259,20 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out)
     return 1;
   }
 
+  struct pollfd udp_tracker_pfds[200];
+
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
     String tracker_url = metainfo->trackers_url[j];
     printf("\n===| tracker (%d) url: %.*s\n", j, (u32)tracker_url.len, tracker_url.data);
-    if (tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p') {
-      printf("----- Only http trackers are supported. Skipping.\n");
-      continue;
-    }
-
-    // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-
-    usize offset = 0;
-    char url[1024] = {0};
-    offset += snprintf(url, tracker_url.len + 1, "%.*s", (i32)tracker_url.len, tracker_url.data);
-    switch (url[tracker_url.len - 1]) {
-    case '/':
-      assert(url[tracker_url.len] == '\0');
-      url[tracker_url.len - 1] = '?';
-      break;
-
-    default:
-      assert(url[tracker_url.len] == '\0');
-      url[tracker_url.len] = '?';
-      break;
-    }
-
-    usize hash_offset = 0;
-    char encoded_hash[61] = {0};
-    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-      hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
-    }
-    offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
-    offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", "k492jal1dkfj9oa3e8se");
-    offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
-    offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
-    offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
-    if (metainfo->info.is_single_file) {
-      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", metainfo->info.length);
+    TorrentTrackerResponse resp = {0};
+    bool is_udp = tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p';
+    if (is_udp) {
+      resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds);
     } else {
-      usize len = 0;
-      for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
-        len += metainfo->info.multi_files.files[i].length;
-      }
-      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", len);
+      resp = trackerHttpFetch(curl, tracker_url, metainfo);
     }
-    offset += snprintf(url + offset, 1024 - offset, "&compact=1");
-
-    if (data[0] != '\0') memset(data, 0, 1024 * 1024);
-    String resp = {.len = 0, .data = data};
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)5);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)5);
-    curl_easy_setopt(curl, CURLOPT_SERVER_RESPONSE_TIMEOUT, (long)5);
-    curl_easy_setopt(curl, CURLOPT_ACCEPTTIMEOUT_MS, (long)5000);
-
-    result = curl_easy_perform(curl);
-    if (result != CURLE_OK) {
-      fprintf(stderr, "----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
-      continue;
-    }
-
-    TorrentTrackerResponse t_resp = trackerResponseDecode(resp);
-    if (t_resp.peers.len == 0 && t_resp.peers6.len == 0) continue;
-    *out = t_resp;
+    if (resp.peers.len == 0 && resp.peers6.len == 0) continue;
+    *out = resp;
     break;
   }
 
@@ -262,21 +369,25 @@ u32 trackerPeer4Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_
   u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
   if (c != 0) {
     printf("connection with peer failed: %s\n", strerror(errno));
-    return c;
+    result = c;
+    goto cleanup;
   }
 
   if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
     printf("failed to send handshake to peer: %s\n", strerror(errno));
-    return -1;
+    result = -1;
+    goto cleanup;
   }
 
   char resp_buff[1024] = {0};
   if (read(fd, resp_buff, 1023) < 0) {
     printf("failed to read peer response: %s\n", strerror(errno));
-    return -1;
+    result = -1;
+    goto cleanup;
   }
   printf("peer response: %s\n", resp_buff);
 
+cleanup:
   close(fd);
   return result;
 }
@@ -311,13 +422,13 @@ u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_
     return c;
   }
 
-  if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
+  if (send(fd, handshake_buff, sizeof(handshake_buff), 0) < 0) {
     printf("failed to send handshake to peer: %s\n", strerror(errno));
     return -1;
   }
 
   char resp_buff[1024] = {0};
-  if (read(fd, resp_buff, 1023) < 0) {
+  if (recv(fd, resp_buff, 1023, 0) < 0) {
     printf("failed to read peer response: %s\n", strerror(errno));
     return -1;
   }
