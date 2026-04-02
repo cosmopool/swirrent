@@ -1,11 +1,14 @@
 .cache/
 build/
 build_test/
+.DS_Store
 *.dSYM/
 *.elf
 *.nacp
 *.nro
 *.torrent
 *.o
+*.bin
 compile_commands.json
 decoder
+handshake
