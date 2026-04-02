@@ -129,6 +129,40 @@ typedef struct {
   u16 port;
 } TorrentPeer6;
 
+typedef struct {
+  const char *data;
+  usize len;
+  usize count;
+} TorrentPeers;
+
+typedef struct {
+  const char *data;
+  usize len;
+  usize count;
+} TorrentPeers6;
+
+typedef struct {
+  // Tracker response fields
+  // failure reason - optional human readable string explaining why the query
+  // failed
+  String failure_reason;
+  String warning_message;
+
+  // interval - number of seconds the downloader should wait between regular
+  // rerequests
+  usize interval;
+  usize min_interval;
+
+  usize complete;
+  usize downloaded;
+  usize incomplete;
+
+  // peers - list of dictionaries corresponding to peers
+  TorrentPeers peers;
+  TorrentPeers6 peers6;
+  // usize peer_count;
+} TrackerResponse;
+
 TorrentMetainfo *torrentMetainfoInit();
 void torrentMetainfoCleanup(TorrentMetainfo *mi);
 void torrentMetainfoPrint(TorrentMetainfo metainfo);
@@ -144,3 +178,4 @@ void torrentListDecode(BencodeParser *p, TorrentMetainfo *out);
 void torrentInfoDictDecode(BencodeParser *p, TorrentMetainfo *out);
 
 void torrentInfoDictEncode(TorrentMetainfo *m);
+u32 torrentResponseDecode(String *raw_resp, TrackerResponse *resp);

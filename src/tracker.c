@@ -1,103 +1,329 @@
+#include <arpa/inet.h>
+#include <assert.h>
+#include <curl/curl.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/unistd.h>
+#include <unistd.h>
 
-#include "tracker.h"
-#include "bencode.h"
+#define STRING_IMPLEMENTATION
 #include "core.h"
+#include "tracker.h"
 
-void trackerResponseDecode(BencodeParser *p, TrackerResponse *resp) {
-  if (p->bencode[p->cursor] != 'd') {
-    resp->failure_reason = (String){.data = p->bencode, .len = p->bencode_len};
-    return;
+static char data[1024 * 1024] = {0};
+static SwirrentOptions *options = {0};
+
+// simple write callback
+usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
+  if (options->verbose) printf("----- RESPONSE SIZE: %ld\n", size * nmemb);
+  if (options->verbose) printf("----- RESPONSE DATA: %s\n", ptr);
+  if (options->dump_response) {
+    FILE *file = fopen(options->raw_request_output_path, "wb");
+    if (file) {
+      // Write some text to the file
+      size_t written = fwrite(ptr, 1, size * nmemb, file);
+      if (written < size * nmemb) {
+        printf("Warning: Only wrote %zu of %zu bytes.\n", written, size * nmemb);
+      }
+    } else {
+      perror("fopen");
+    }
+    // Close the file
+    fclose(file);
   }
 
-  p->cursor++;
-  while (p->bencode[p->cursor] != 'e') {
-    String key = bencodeStringDecode(p);
+  String *r = (String *)userdata;
+  r->len += size * nmemb;
+  memcpy((void *)r->data, ptr, r->len);
+  return size * nmemb;
+}
 
-    if (STRING_MATCHES("failure reason", key)) {
-      resp->failure_reason = bencodeStringDecode(p);
-      return;
-    }
+void trackerOptionsSet(SwirrentOptions *op) {
+  options = op;
+}
 
-    else if (STRING_MATCHES("complete", key)) {
-      resp->complete = bencodeIntegerDecode(p);
-      continue;
-    }
+TrackerResponse trackerResponseDecode(String resp) {
+  TrackerResponse t_resp = {0};
+  torrentResponseDecode(&resp, &t_resp);
 
-    else if (STRING_MATCHES("downloaded", key)) {
-      resp->downloaded = bencodeIntegerDecode(p);
-      continue;
-    }
-
-    else if (STRING_MATCHES("incomplete", key)) {
-      resp->incomplete = bencodeIntegerDecode(p);
-      continue;
-    }
-
-    else if (STRING_MATCHES("interval", key)) {
-      resp->interval = bencodeIntegerDecode(p);
-      continue;
-    }
-
-    else if (STRING_MATCHES("min interval", key)) {
-      resp->min_interval = bencodeIntegerDecode(p);
-      continue;
-    }
-
-    else if (STRING_MATCHES("peers", key)) {
-      if (p->bencode[p->cursor] == 'l') {
-        bencodeValueSkip(p);
-        printf("----- decoding peers: only compact form decoding is implemented yet.\n");
-        continue;
-      }
-
-      String str = bencodeStringDecode(p);
-      if (str.len % (IPV4_LEN + PORT_LEN) != 0) {
-        printf("----- decoding peers4: invalid length (must be multiple of 10).\n");
-        continue;
-      }
-
-      resp->peers = (TorrentPeers){
-          .data = str.data,
-          .len = str.len,
-          .count = str.len / (IPV4_LEN + PORT_LEN),
-      };
-      continue;
-    }
-
-    else if (STRING_MATCHES("peers6", key)) {
-      if (p->bencode[p->cursor] == 'l') {
-        bencodeValueSkip(p);
-        printf("----- decoding peers6: only compact form decoding is implemented yet.\n");
-        continue;
-      }
-
-      printf("----- decoding peers6: nintendo switch does not support ipv6.\n");
-      bencodeValueSkip(p);
-      continue;
-
-      String str = bencodeStringDecode(p);
-      if (str.len % (IPV6_LEN + PORT_LEN) != 0) {
-        printf("----- decoding peers6: invalid length (must be multiple of 18).\n");
-        continue;
-      }
-
-      resp->peers6 = (TorrentPeers6){
-          .data = str.data,
-          .len = str.len,
-          .count = str.len / (IPV6_LEN + PORT_LEN),
-      };
-      continue;
-    }
-
-    else if (STRING_MATCHES("warning message", key)) {
-      resp->warning_message = bencodeStringDecode(p);
-      continue;
-    }
-
-    // skip unrecognized/unwanted key/values
-    printf("-> |%.*s\n", (u32)key.len, key.data);
-    bencodeValueSkip(p);
-    continue;
+  if (t_resp.warning_message.len > 0 && t_resp.peers.len == 0) {
+    printf("----- Skipping tracker with warning_message: %.*s. Trying another one.\n",
+           (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+    return t_resp;
   }
-  p->cursor++;
+  if (t_resp.failure_reason.len > 0 && t_resp.peers.len == 0) {
+    printf("----- Skipping tracker because failed: %.*s. Trying another one.\n",
+           (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
+    return t_resp;
+  }
+  printf("\n===| TRACKER RESPONSE\n");
+  printf("interval: %ld\n", t_resp.interval);
+  printf("min interval: %ld\n", t_resp.min_interval);
+  printf("complete: %ld\n", t_resp.complete);
+  printf("incomplete: %ld\n", t_resp.incomplete);
+  printf("downloaded: %ld\n", t_resp.downloaded);
+  printf("warning_message: %.*s\n", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
+  printf("failure_reason: %.*s\n", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
+  for (u32 i = 0; i < t_resp.peers6.count; i++) {
+    if (i == 0) printf("peers6:\n");
+    TorrentPeer6 peer = torrentPeer6Get(t_resp.peers6.data, i);
+    char ip_buff[INET6_ADDRSTRLEN] = {0};
+    if (!inet_ntop(AF_INET6, peer.ip.data, ip_buff, sizeof(ip_buff))) {
+      printf("  (%d)\t failed to parse ipv6: %s\n", i, strerror(errno));
+      continue;
+    }
+    printf("  (%d)\t ip: %s \t | port: %d\n", i, ip_buff, peer.port);
+  }
+
+  for (u32 i = 0; i < t_resp.peers.len / (IPV4_LEN + PORT_LEN); i++) {
+    if (i == 0) printf("peers:\n");
+    TorrentPeer peer = torrentPeerGet(t_resp.peers.data, i);
+    char ip_buff[INET_ADDRSTRLEN] = {0};
+    if (!inet_ntop(AF_INET, peer.ip.data, ip_buff, sizeof(ip_buff))) {
+      printf("  (%d)\t failed to parse ipv4: %s\n", i, strerror(errno));
+      continue;
+    }
+    printf("  (%d)\t ip: %s \t | port: %d\n", i, ip_buff, peer.port);
+  }
+  return t_resp;
+}
+
+u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out) {
+  u32 result = 0;
+  CURL *curl = curl_easy_init();
+  if (!curl) {
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    return 1;
+  }
+
+  for (u32 j = 0; j < metainfo->trackers_count; j++) {
+    String tracker_url = metainfo->trackers_url[j];
+    printf("\n===| tracker (%d) url: %.*s\n", j, (u32)tracker_url.len, tracker_url.data);
+    if (tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p') {
+      printf("----- Only http trackers are supported. Skipping.\n");
+      continue;
+    }
+
+    // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
+    usize offset = 0;
+    char url[1024] = {0};
+    offset += snprintf(url, tracker_url.len + 1, "%s", tracker_url.data);
+    switch (url[tracker_url.len - 1]) {
+    case '/':
+      assert(url[tracker_url.len] == '\0');
+      url[tracker_url.len - 1] = '?';
+      break;
+
+    default:
+      assert(url[tracker_url.len] == '\0');
+      url[tracker_url.len] = '?';
+      break;
+    }
+
+    usize hash_offset = 0;
+    char encoded_hash[61] = {0};
+    for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
+      hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
+    }
+    offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
+    offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", "k492jal1dkfj9oa3e8se");
+    offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
+    offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
+    offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
+    if (metainfo->info.is_single_file) {
+      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", metainfo->info.length);
+    } else {
+      usize len = 0;
+      for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
+        len += metainfo->info.multi_files.files[i].length;
+      }
+      offset += snprintf(url + offset, 1024 - offset, "&left=%ld", len);
+    }
+    offset += snprintf(url + offset, 1024 - offset, "&compact=1");
+
+    if (data[0] != '\0') memset(data, 0, 1024 * 1024);
+    String resp = {.len = 0, .data = data};
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)5);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)5);
+    curl_easy_setopt(curl, CURLOPT_SERVER_RESPONSE_TIMEOUT, (long)5);
+    curl_easy_setopt(curl, CURLOPT_ACCEPTTIMEOUT_MS, (long)5000);
+
+    result = curl_easy_perform(curl);
+    if (result != CURLE_OK) {
+      fprintf(stderr, "----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
+      continue;
+    }
+
+    TrackerResponse t_resp = trackerResponseDecode(resp);
+    if (t_resp.warning_message.len != 0 || t_resp.failure_reason.len != 0) continue;
+    if (t_resp.peers.len == 0 && t_resp.peers6.len == 0) continue;
+    *out = t_resp;
+    break;
+  }
+
+  curl_easy_cleanup(curl);
+  curl_global_cleanup();
+  return result;
+}
+
+void trackerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) {
+  assert(info_hash[0] != '\0');
+
+  const char *protocol_str = "BitTorrent protocol";
+  const u32 protocol_len = strlen(protocol_str);
+
+  u32 offset = 0;
+  handshake_buff[offset] = 19;
+  offset++;
+
+  memcpy(handshake_buff + offset, protocol_str, protocol_len);
+  offset += protocol_len;
+  assert(offset == 20);
+
+  memset(handshake_buff + offset, 0, 8);
+  offset += 8;
+  assert(offset == 28);
+
+  memcpy(handshake_buff + offset, info_hash, SHA_DIGEST_LENGTH);
+  offset += SHA_DIGEST_LENGTH;
+  assert(offset == 48);
+
+  memcpy(handshake_buff + offset, peer_id, PEER_ID_LENGTH);
+  offset += PEER_ID_LENGTH;
+  assert(offset == 68);
+  FILE *file = fopen("handshake", "wb");
+  if (file) {
+    // Write some text to the file
+    size_t written = fwrite(handshake_buff, 1, 68, file);
+    if (written < 68) {
+      printf("Warning: Only wrote %zu of 68 bytes.\n", written);
+    }
+  } else {
+    perror("fopen");
+  }
+  // Close the file
+  if (file) fclose(file);
+}
+
+// u32 trackerPeerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size) {
+//   u32 c = connect(fd, (struct sockaddr *)&sock, sock_size);
+//   if (c != 0) {
+//     printf("connection with peer failed: %s\n", strerror(errno));
+//     return c;
+//   }
+//
+//   if (write(fd, data, data_size) < 0) {
+//     printf("failed to send data to peer: %s\n", strerror(errno));
+//     return -1;
+//   }
+//
+//   char resp_buff[1024] = {0};
+//   if (read(fd, resp_buff, 1023) < 0) {
+//     printf("failed to read peer response: %s\n", strerror(errno));
+//     return -1;
+//   }
+//   printf("peer response: %s\n", resp_buff);
+//
+//   close(fd);
+// }
+
+u32 trackerPeer4Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+  char handshake_buff[68] = {0};
+  trackerHandshakeGenerate(info_hash, peer_id, handshake_buff);
+
+  TorrentPeer peer = torrentPeerGet(resp->peers.data, 0);
+  char ip_str[INET_ADDRSTRLEN] = {0};
+  if (!inet_ntop(AF_INET, peer.ip.data, ip_str, sizeof(ip_str))) {
+    printf("  (%d)\t failed to parse ipv: %s\n", 0, strerror(errno));
+    return -1;
+  }
+
+  u32 result = 0;
+  i32 fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    printf("socket error: %s\n", strerror(errno));
+    return fd;
+  }
+
+  struct sockaddr_in sock = {
+      .sin_port = htons(peer.port),
+      .sin_family = AF_INET,
+  };
+  memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
+
+  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
+  if (c != 0) {
+    printf("connection with peer failed: %s\n", strerror(errno));
+    return c;
+  }
+
+  if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
+    printf("failed to send handshake to peer: %s\n", strerror(errno));
+    return -1;
+  }
+
+  char resp_buff[1024] = {0};
+  if (read(fd, resp_buff, 1023) < 0) {
+    printf("failed to read peer response: %s\n", strerror(errno));
+    return -1;
+  }
+  printf("peer response: %s\n", resp_buff);
+
+  close(fd);
+  return result;
+}
+
+u32 trackerPeer6Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+  char handshake_buff[68] = {0};
+  trackerHandshakeGenerate(info_hash, peer_id, handshake_buff);
+
+  TorrentPeer6 peer = torrentPeer6Get(resp->peers6.data, 0);
+  char ip_str[INET6_ADDRSTRLEN] = {0};
+  if (!inet_ntop(AF_INET6, peer.ip.data, ip_str, sizeof(ip_str))) {
+    printf("  (%d)\t failed to parse ipv6: %s\n", 0, strerror(errno));
+    return -1;
+  }
+
+  u32 result = 0;
+  i32 fd = socket(AF_INET6, SOCK_STREAM, 0);
+  if (fd < 0) {
+    printf("socket error: %s\n", strerror(errno));
+    return fd;
+  }
+
+  struct sockaddr_in sock = {
+      .sin_port = htons(peer.port),
+      .sin_family = AF_INET,
+  };
+  memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
+
+  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
+  if (c != 0) {
+    printf("connection with peer failed: %s\n", strerror(errno));
+    return c;
+  }
+
+  if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
+    printf("failed to send handshake to peer: %s\n", strerror(errno));
+    return -1;
+  }
+
+  char resp_buff[1024] = {0};
+  if (read(fd, resp_buff, 1023) < 0) {
+    printf("failed to read peer response: %s\n", strerror(errno));
+    return -1;
+  }
+  printf("peer response: %s\n", resp_buff);
+
+  close(fd);
+  return result;
 }

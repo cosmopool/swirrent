@@ -1,39 +1,13 @@
 #pragma once
 
-#include "bencode.h"
+#include "swirrent.h"
+#include "torrent.h"
 
 typedef struct {
-  const char *data;
-  usize len;
-  usize count;
-} TorrentPeers;
+  char info_hash[20];
+  usize pieces_bitfield;
+} DownloaderProgress;
 
-typedef struct {
-  const char *data;
-  usize len;
-  usize count;
-} TorrentPeers6;
-
-typedef struct TorrentTrackerResponse {
-  // Tracker response fields
-  // failure reason - optional human readable string explaining why the query
-  // failed
-  String failure_reason;
-  String warning_message;
-
-  // interval - number of seconds the downloader should wait between regular
-  // rerequests
-  usize interval;
-  usize min_interval;
-
-  usize complete;
-  usize downloaded;
-  usize incomplete;
-
-  // peers - list of dictionaries corresponding to peers
-  TorrentPeers peers;
-  TorrentPeers6 peers6;
-  // usize peer_count;
-} TrackerResponse;
-
-void trackerResponseDecode(BencodeParser *p, TrackerResponse *out);
+void trackerOptionsSet(SwirrentOptions *);
+u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out);
+u32 trackerPeer6Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id);
