@@ -229,8 +229,7 @@ void torrentMetainfoDecode(BencodeParser *parser, TorrentMetainfo *metainfo) {
       continue;
     }
 
-    else if (STRING_MATCHES("url-list", key) ||
-             STRING_MATCHES("announce-list", key)) {
+    else if (STRING_MATCHES("announce-list", key)) {
       assert(bencodeParserCurrent(parser) == 'l');
       parser->cursor++;
       while (parser->bencode[parser->cursor] != 'e') {
