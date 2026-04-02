@@ -51,8 +51,7 @@ void bencodeParserCleanup(BencodeParser *bencode) {
 String bencodeStringDecode(BencodeParser *decoder) {
   char *colon_ptr;
   errno = 0;
-  char curr_char = bencodeParserCurrent(decoder);
-  isize str_len = strtol(&curr_char, &colon_ptr, 10);
+  isize str_len = strtol(&decoder->bencode[decoder->cursor], &colon_ptr, 10);
   if (errno) {
     char *msg = "[BAD STRING] Not able to decode string lenght: %s\n";
     fprintf(stderr, msg, strerror(errno));
@@ -70,8 +69,8 @@ isize bencodeIntegerDecode(BencodeParser *decoder) {
   assert(decoder->bencode_len - decoder->cursor > 3);
   char *end_ptr;
 
-  const char start_ptr = bencodeParserCurrent(decoder);
-  isize integer = strtol(&start_ptr + 1, &end_ptr, 10);
+  const char *start_ptr = &decoder->bencode[decoder->cursor];
+  isize integer = strtol(start_ptr + 1, &end_ptr, 10);
   if (errno) {
     printf("Not able to convert to integer: %s\n", strerror(errno));
     char *msg = "[BAD INTEGER] Not able to convert integer from: %*s\n";
