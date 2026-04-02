@@ -48,8 +48,8 @@ void torrentMetainfoCleanup(TorrentMetainfo *mi) {
   free(mi->trackers_url);
 
   if (mi->info.is_single_file) {
-    assert(!mi->info.multi_files.files);
     assert(!mi->info.multi_files.paths);
+    assert(mi->info.multi_files.count == 0);
     return;
   }
 
