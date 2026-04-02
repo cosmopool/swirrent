@@ -55,7 +55,7 @@ String bencodeStringDecode(BencodeParser *decoder) {
   if (errno) {
     char *msg = "[BAD STRING] Not able to decode string lenght: %s\n";
     fprintf(stderr, msg, strerror(errno));
-    exit(1);
+    return (String){0};
   }
   if (str_len > 0) assert(decoder->bencode_len - decoder->cursor > (usize)str_len);
 
