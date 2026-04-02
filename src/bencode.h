@@ -2,18 +2,11 @@
 
 #include "core.h"
 
-#define IS_LIST parser->bencode[parser->cursor] == 'l'
-#define IS_DICT parser->bencode[parser->cursor] == 'd'
+#define IS_LIST bencodeParserCurrent(decoder) == 'l'
+#define IS_DICT bencodeParserCurrent(decoder) == 'd'
 #define STRING_MATCHES(key, string)                                 \
   (string.data[0] == (key)[0] && string.len == (sizeof(key) - 1) && \
    memcmp(string.data, key, sizeof(key) - 1) == 0)
-
-typedef enum : u8 {
-  INT,
-  STRING,
-  LIST,
-  DICT,
-} BencodeType;
 
 typedef struct {
   usize cursor;
@@ -21,6 +14,8 @@ typedef struct {
   char *bencode;
   usize bencode_len;
 } BencodeParser;
+
+char bencodeParserCurrent(BencodeParser *);
 
 BencodeParser bencodeParserFromData(char *data, usize len);
 BencodeParser bencodeParserFromFile(const char *file_path);
