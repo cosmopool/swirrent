@@ -312,9 +312,8 @@ char *bencodeListCloseEncode(char *dest, const char *dict_name) {
   return dest + 1;
 }
 
-#define MAX_LEN 2 * 1024 * 1024
 void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
-  char buff[MAX_LEN] = {0};
+  char buff[1024 * 1024] = {0};
   char *buff_slice = &buff[0];
 
   buff_slice = bencodeDictEncode(buff_slice);
@@ -353,7 +352,7 @@ void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
   buff_slice = bencodeStringEncode(metainfo->info.pieces, buff_slice);
 
   buff_slice = bencodeDictCloseEncode(buff_slice, "info"); // info dict
-                                                           //
+
   usize len = buff_slice - buff;
   if (sha1digest(metainfo->info_hash, NULL, (u8 *)buff, len) != 0) {
     printf("%s:%d Not able to generate the SHA1 hash of 'info' dictionary!", __FILE__, __LINE__);

@@ -1,11 +1,11 @@
 #pragma once
 
-#include "bencode.h"
-#include "torrent.h"
 #include <stdbool.h>
 
+#include "bencode.h"
 #define STRING_IMPLEMENTATION
 #include "core.h"
+#include "torrent.h"
 
 typedef struct {
   bool verbose;

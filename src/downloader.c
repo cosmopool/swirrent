@@ -1,6 +1,3 @@
-#include "bencode.h"
-#include "torrent.h"
-
 #include <arpa/inet.h>
 #include <assert.h>
 #include <curl/curl.h>
@@ -14,19 +11,9 @@
 #include <unistd.h>
 
 #define STRING_IMPLEMENTATION
-#include "core.h"
 #include "downloader.h"
+#include "torrent.h"
 
-#ifndef INET6_ADDRSTRLEN
-#define INET6_ADDRSTRLEN 16
-#endif
-
-#ifndef INET_ADDRSTRLEN
-#define INET_ADDRSTRLEN 4
-#endif
-
-// static usize peer_count = 0;
-// static TorrentPeer peers[2048] = {0};
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
 

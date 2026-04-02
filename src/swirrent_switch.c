@@ -3,6 +3,14 @@
 #include <string.h>
 #include <switch.h>
 
+#ifndef INET6_ADDRSTRLEN
+#define INET6_ADDRSTRLEN 16
+#endif
+
+#ifndef INET_ADDRSTRLEN
+#define INET_ADDRSTRLEN 4
+#endif
+
 #define STRING_IMPLEMENTATION
 #include "core.h"
 #include "swirrent.h"
