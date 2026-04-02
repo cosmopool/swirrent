@@ -161,7 +161,7 @@ typedef struct {
   TorrentPeers peers;
   TorrentPeers6 peers6;
   // usize peer_count;
-} TrackerResponse;
+} TorrentTrackerResponse;
 
 TorrentMetainfo *torrentMetainfoInit();
 void torrentMetainfoCleanup(TorrentMetainfo *mi);
@@ -178,4 +178,5 @@ void torrentListDecode(BencodeParser *p, TorrentMetainfo *out);
 void torrentInfoDictDecode(BencodeParser *p, TorrentMetainfo *out);
 
 void torrentInfoDictEncode(TorrentMetainfo *m);
-u32 torrentResponseDecode(String *raw_resp, TrackerResponse *resp);
+u32 torrentResponseDecode(String *raw_resp, TorrentTrackerResponse *resp);
+void torrentInfoHashGenerate(TorrentMetainfo *m);

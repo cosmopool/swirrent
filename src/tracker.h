@@ -9,5 +9,5 @@ typedef struct {
 } DownloaderProgress;
 
 void trackerOptionsSet(SwirrentOptions *);
-u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out);
-u32 trackerPeer6Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id);
+u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out);
+u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id);

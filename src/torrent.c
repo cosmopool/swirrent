@@ -310,7 +310,7 @@ char *bencodeListCloseEncode(char *dest, const char *dict_name) {
   return dest + 1;
 }
 
-void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
+void torrentInfoHashGenerate(TorrentMetainfo *metainfo) {
   char buff[1024 * 1024] = {0};
   char *buff_slice = &buff[0];
 
@@ -360,7 +360,12 @@ void bencodeInfoDictEncode(TorrentMetainfo *metainfo) {
   printf("SHA1: %s\n", metainfo->info_hash);
 }
 
-u32 torrentResponseDecode(String *raw_resp, TrackerResponse *resp) {
+u32 torrentResponseDecode(String *raw_resp, TorrentTrackerResponse *resp) {
+  if (raw_resp->len == 0) {
+    resp->failure_reason = (String){.data = "empty response", .len = 14};
+    return 0;
+  }
+
   BencodeParser p = bencodeParserFromData((char *)raw_resp->data, raw_resp->len);
 
   if (p.bencode[p.cursor] != 'd') {

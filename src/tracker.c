@@ -46,8 +46,8 @@ void trackerOptionsSet(SwirrentOptions *op) {
   options = op;
 }
 
-TrackerResponse trackerResponseDecode(String resp) {
-  TrackerResponse t_resp = {0};
+TorrentTrackerResponse trackerResponseDecode(String resp) {
+  TorrentTrackerResponse t_resp = {0};
   torrentResponseDecode(&resp, &t_resp);
 
   if (t_resp.warning_message.len > 0 && t_resp.peers.len == 0) {
@@ -92,7 +92,7 @@ TrackerResponse trackerResponseDecode(String resp) {
   return t_resp;
 }
 
-u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out) {
+u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -163,8 +163,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TrackerResponse *out) {
       continue;
     }
 
-    TrackerResponse t_resp = trackerResponseDecode(resp);
-    if (t_resp.warning_message.len != 0 || t_resp.failure_reason.len != 0) continue;
+    TorrentTrackerResponse t_resp = trackerResponseDecode(resp);
     if (t_resp.peers.len == 0 && t_resp.peers6.len == 0) continue;
     *out = t_resp;
     break;
@@ -236,7 +235,7 @@ void trackerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68
 //   close(fd);
 // }
 
-u32 trackerPeer4Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+u32 trackerPeer4Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
   char handshake_buff[68] = {0};
   trackerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 
@@ -282,7 +281,7 @@ u32 trackerPeer4Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
   return result;
 }
 
-u32 trackerPeer6Handshake(TrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
   char handshake_buff[68] = {0};
   trackerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 
