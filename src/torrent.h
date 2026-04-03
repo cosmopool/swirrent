@@ -160,6 +160,8 @@ typedef struct {
   // peers - list of dictionaries corresponding to peers
   TorrentPeers peers;
   TorrentPeers6 peers6;
+
+  u64 connection_id;
   // usize peer_count;
 } TorrentTrackerResponse;
 

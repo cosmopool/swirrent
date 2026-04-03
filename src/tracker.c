@@ -20,6 +20,8 @@
 #include "core.h"
 #include "tracker.h"
 
+#define CONNECT_REQUEST_SIZE 16
+
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
 
@@ -155,6 +157,8 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
   printf("\topening socket for: %s:%d\n", ip, ntohs(ipv4->sin_port));
 
+  assert(tracker_addr->ai_family == AF_INET);
+  assert(tracker_addr->ai_socktype == SOCK_DGRAM);
   i32 fd = socket(tracker_addr->ai_family, tracker_addr->ai_socktype, tracker_addr->ai_protocol);
   if (fd < 0) {
     printf("\tsocket error: %s\n", strerror(errno));
@@ -172,37 +176,53 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
     goto cleanup;
   }
 
-// send connect request
-#define BUFF_SIZE 16
-  i8 connect_request_buff[BUFF_SIZE] = {0};
+  // send connect request
+  i8 connect_request_buff[CONNECT_REQUEST_SIZE] = {0};
   u64 protocol_magic_value = htobe64(0x41727101980);
-  memcpy(connect_request_buff, &protocol_magic_value, sizeof(protocol_magic_value));
   u32 action = htobe32(0);
-  memcpy(connect_request_buff + sizeof(protocol_magic_value), &action, sizeof(action));
   u32 transaction_id = htobe32((u32)rand());
-  memcpy(connect_request_buff + sizeof(protocol_magic_value) + sizeof(action), &transaction_id, 4);
+  memcpy(connect_request_buff + 0, &protocol_magic_value, 8);
+  memcpy(connect_request_buff + 8, &action, 4);
+  memcpy(connect_request_buff + 12, &transaction_id, 4);
   FILE *file = fopen("connect_request", "wb");
   if (file) {
-    size_t written = fwrite(connect_request_buff, 1, BUFF_SIZE, file);
-    if (written < BUFF_SIZE) printf("warning: only wrote %zu of %d bytes.\n", written, BUFF_SIZE);
+    size_t written = fwrite(connect_request_buff, 1, CONNECT_REQUEST_SIZE, file);
+    if (written < CONNECT_REQUEST_SIZE) printf("warning: only wrote %zu of %d bytes.\n", written, CONNECT_REQUEST_SIZE);
     fclose(file);
   } else {
     perror("\tfopen");
   }
-  if (sendto(fd, connect_request_buff, BUFF_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
+  if (sendto(fd, connect_request_buff, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
     printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
     goto cleanup;
   }
 
   // setsockopt(fd, SO_RCVTIMEO);
-  char resp_buff[1024] = {0};
   struct sockaddr from = {0};
   socklen_t from_len = sizeof(from);
-  if (recvfrom(fd, resp_buff, 1023, MSG_WAITALL, &from, &from_len) < 0) {
+  char resp_buff[1024] = {0};
+  isize rc = recvfrom(fd, resp_buff, sizeof(resp_buff), MSG_WAITALL, &from, &from_len);
+
+  if (rc < 0) {
     printf("\tfailed to read tracker response: %s\n", strerror(errno));
     goto cleanup;
+  } else if (rc == 0) {
+    printf("\ttracker has closed the connection: %s\n", strerror(errno));
+    goto cleanup;
   }
-  printf("\ttracker response (%lu): %s\n", strlen(resp_buff), resp_buff);
+
+  // check tracker connect response
+  char connect_response_buff[CONNECT_REQUEST_SIZE - sizeof(protocol_magic_value)] = {0};
+  memcpy(connect_response_buff + 0, &action, 4);
+  memcpy(connect_response_buff + 4, &transaction_id, 4);
+  if (memcmp(connect_response_buff, resp_buff, sizeof(connect_response_buff)) != 0) {
+    printf("\tconnection refused!\n");
+    goto cleanup;
+  }
+  u64 connection_id = 0;
+  memcpy((char *)&connection_id, connect_response_buff + 12, sizeof(connection_id));
+  r.connection_id = be64toh(connection_id);
+  printf("\tsuccessfully connected, connection id: %llu\n", connection_id);
 
 cleanup:
   close(fd);
