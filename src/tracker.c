@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/endian.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
@@ -136,51 +137,72 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   assert(tracker_url.data[2] == 'p');
 
   TorrentTrackerResponse r = {0};
-  struct addrinfo *res = {0};
-  struct addrinfo sock = {
-      .ai_family = AF_INET,
-      .ai_socktype = SOCK_DGRAM,
-  };
+  struct addrinfo *tracker_addr, hints = {
+                                     .ai_family = AF_INET,
+                                     .ai_socktype = SOCK_DGRAM,
+                                 };
 
   char host[256], port[16];
   parse_tracker_url(tracker_url, host, sizeof(host), port, sizeof(port));
-  printf("\thost: %s\n", host);
-  printf("\tport: %s\n", port);
   i32 get_addr_status;
-  if ((get_addr_status = getaddrinfo(host, port, &sock, &res)) != 0) {
+  if ((get_addr_status = getaddrinfo(host, port, &hints, &tracker_addr)) != 0) {
     fprintf(stderr, "\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
     return r;
   }
+  // print ipv4 of tracker
+  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)tracker_addr->ai_addr;
+  char ip[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
+  printf("\topening socket for: %s:%d\n", ip, ntohs(ipv4->sin_port));
 
-  i32 fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+  i32 fd = socket(tracker_addr->ai_family, tracker_addr->ai_socktype, tracker_addr->ai_protocol);
   if (fd < 0) {
     printf("\tsocket error: %s\n", strerror(errno));
     goto cleanup;
   }
 
-  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
-  if (c != 0) {
-    printf("\tconnection with tracker failed: %s\n", strerror(errno));
+  // bind to any port
+  struct sockaddr_in src = {
+      .sin_family = AF_INET,
+      .sin_addr.s_addr = htonl(INADDR_ANY),
+      .sin_port = htons(0),
+  };
+  if (bind(fd, (struct sockaddr *)&src, sizeof(src)) < 0) {
+    printf("\tfailed to bind to tracker fd: %s\n", strerror(errno));
     goto cleanup;
   }
 
+// send connect request
 #define BUFF_SIZE 16
-  i8 handshake_buff[BUFF_SIZE] = {0};
-  usize protocol_magic_value = 0x41727101980;
-  memcpy(handshake_buff, &protocol_magic_value, 16);
-  for (i32 i = 0; i < 8; i++)
-    handshake_buff[sizeof(protocol_magic_value) + 1 + i] = rand() & 0xff;
-  if (send(fd, handshake_buff, sizeof(handshake_buff), 0) < 0) {
-    printf("failed to send handshake to tracker: %s\n", strerror(errno));
+  i8 connect_request_buff[BUFF_SIZE] = {0};
+  u64 protocol_magic_value = htobe64(0x41727101980);
+  memcpy(connect_request_buff, &protocol_magic_value, sizeof(protocol_magic_value));
+  u32 action = htobe32(0);
+  memcpy(connect_request_buff + sizeof(protocol_magic_value), &action, sizeof(action));
+  u32 transaction_id = htobe32((u32)rand());
+  memcpy(connect_request_buff + sizeof(protocol_magic_value) + sizeof(action), &transaction_id, 4);
+  FILE *file = fopen("connect_request", "wb");
+  if (file) {
+    size_t written = fwrite(connect_request_buff, 1, BUFF_SIZE, file);
+    if (written < BUFF_SIZE) printf("warning: only wrote %zu of %d bytes.\n", written, BUFF_SIZE);
+    fclose(file);
+  } else {
+    perror("\tfopen");
+  }
+  if (sendto(fd, connect_request_buff, BUFF_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
+    printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
     goto cleanup;
   }
 
+  // setsockopt(fd, SO_RCVTIMEO);
   char resp_buff[1024] = {0};
-  if (recv(fd, resp_buff, 1023, 0) < 0) {
-    printf("failed to read tracker response: %s\n", strerror(errno));
+  struct sockaddr from = {0};
+  socklen_t from_len = sizeof(from);
+  if (recvfrom(fd, resp_buff, 1023, MSG_WAITALL, &from, &from_len) < 0) {
+    printf("\tfailed to read tracker response: %s\n", strerror(errno));
     goto cleanup;
   }
-  printf("tracker response: %s\n", resp_buff);
+  printf("\ttracker response (%lu): %s\n", strlen(resp_buff), resp_buff);
 
 cleanup:
   close(fd);
@@ -251,6 +273,7 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
 }
 
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
+  (void)out;
   u32 result = 0;
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -265,15 +288,18 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out)
     String tracker_url = metainfo->trackers_url[j];
     printf("\n===| tracker (%d) url: %.*s\n", j, (u32)tracker_url.len, tracker_url.data);
     TorrentTrackerResponse resp = {0};
+    (void)resp;
     bool is_udp = tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p';
     if (is_udp) {
       resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds);
+      break;
     } else {
-      resp = trackerHttpFetch(curl, tracker_url, metainfo);
+      continue;
+      // resp = trackerHttpFetch(curl, tracker_url, metainfo);
     }
-    if (resp.peers.len == 0 && resp.peers6.len == 0) continue;
-    *out = resp;
-    break;
+    // if (resp.peers.len == 0 && resp.peers6.len == 0) continue;
+    // *out = resp;
+    // break;
   }
 
   curl_easy_cleanup(curl);
