@@ -192,22 +192,31 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   } else {
     perror("\tfopen");
   }
-  if (sendto(fd, connect_request_buff, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
-    printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
-    goto cleanup;
-  }
 
-  // setsockopt(fd, SO_RCVTIMEO);
+  u32 tries = 1;
+  char resp_buff[1024] = {0};
   struct sockaddr from = {0};
   socklen_t from_len = sizeof(from);
-  char resp_buff[1024] = {0};
-  isize rc = recvfrom(fd, resp_buff, sizeof(resp_buff), MSG_WAITALL, &from, &from_len);
+  while (tries <= 8) {
+    if (sendto(fd, connect_request_buff, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
+      printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
+      goto cleanup;
+    }
 
-  if (rc < 0) {
+    setsockopt(fd, SO_RCVTIMEO, 0, NULL, 15 * 2 * tries * tries);
+    isize rc = recvfrom(fd, resp_buff, sizeof(resp_buff), MSG_WAITALL, &from, &from_len);
+    if (rc > 0) break;
+    if (rc == 0) {
+      printf("\ttracker has closed the connection: %s\n", strerror(errno));
+      goto cleanup;
+    }
+
+    // these errors are timeouts
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      tries++;
+      continue;
+    }
     printf("\tfailed to read tracker response: %s\n", strerror(errno));
-    goto cleanup;
-  } else if (rc == 0) {
-    printf("\ttracker has closed the connection: %s\n", strerror(errno));
     goto cleanup;
   }
 
