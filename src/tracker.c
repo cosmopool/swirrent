@@ -179,7 +179,7 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   // send connect request
   i8 connect_request_buff[CONNECT_REQUEST_SIZE] = {0};
   u64 protocol_magic_value = htobe64(0x41727101980);
-  u32 action = htobe32(0);
+  u32 action = htobe32(ACTION_CONNECT);
   u32 transaction_id = htobe32((u32)rand());
   memcpy(connect_request_buff + 0, &protocol_magic_value, 8);
   memcpy(connect_request_buff + 8, &action, 4);

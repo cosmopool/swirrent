@@ -3,6 +3,10 @@
 #include "swirrent.h"
 #include "torrent.h"
 
+enum TrackerAction : u32 {
+  ACTION_CONNECT,
+};
+
 typedef struct {
   char info_hash[20];
   usize pieces_bitfield;
