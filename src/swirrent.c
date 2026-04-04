@@ -55,6 +55,12 @@ i32 swirrentMain(SwirrentContext *ctx) {
     fclose(file);
   }
 
+  u8 peer_id[20] = {0};
+  // 8-byte prefix: Azureus-style "-MY0001-"
+  memcpy(peer_id, "-MY0001-", 8);
+  for (int i = 8; i < 20; i++)
+    peer_id[i] = rand() & 0xff;
+
   bool was_raw_request_loaded = ctx->options.raw_request_path != 0;
   if (was_raw_request_loaded) {
     // raw request was load, so we jsut decode it to access the peer list
@@ -63,19 +69,13 @@ i32 swirrentMain(SwirrentContext *ctx) {
     printf("finished decoding tracker response, result: %d\n", result);
     if (result != 0) return result;
 
-    u8 peer_id[20] = {0};
-    // 8-byte prefix: Azureus-style "-MY0001-"
-    memcpy(peer_id, "-MY0001-", 8);
-    for (int i = 8; i < 20; i++)
-      peer_id[i] = rand() & 0xff;
-
     result = trackerPeer6Handshake(&resp, ctx->metainfo->info_hash, peer_id);
     printf("finished generating peer handshake, result: %d\n", result);
     if (result != 0) return result;
   } else {
     // no raw request was load, so we will talk to trackers for peers
     TorrentTrackerResponse resp = {0};
-    i32 result = trackerPeerListFetch(ctx->metainfo, &resp);
+    i32 result = trackerPeerListFetch(ctx->metainfo, &resp, peer_id);
     printf("finish fetching peer list, result: %d\n", result);
     if (result != 0) return result;
   }

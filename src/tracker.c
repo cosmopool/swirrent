@@ -20,8 +20,6 @@
 #include "core.h"
 #include "tracker.h"
 
-#define CONNECT_REQUEST_SIZE 16
-
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
 
@@ -133,10 +131,12 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
   }
 }
 
-TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *metainfo, struct pollfd udp_tracker_pfds[200]) {
+TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *metainfo, struct pollfd udp_tracker_pfds[200], u8 peer_id[20]) {
   assert(tracker_url.data[0] == 'u');
   assert(tracker_url.data[1] == 'd');
   assert(tracker_url.data[2] == 'p');
+  TrackerConnectResponse *connect_res = malloc(1024);
+  TrackerAnnounceResponse *announce_res = malloc(2048);
 
   TorrentTrackerResponse r = {0};
   struct addrinfo *tracker_addr, hints = {
@@ -177,40 +177,41 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   }
 
   // send connect request
-  i8 connect_request_buff[CONNECT_REQUEST_SIZE] = {0};
-  u64 protocol_magic_value = htobe64(0x41727101980);
-  u32 action = htobe32(ACTION_CONNECT);
-  u32 transaction_id = htobe32((u32)rand());
-  memcpy(connect_request_buff + 0, &protocol_magic_value, 8);
-  memcpy(connect_request_buff + 8, &action, 4);
-  memcpy(connect_request_buff + 12, &transaction_id, 4);
-  FILE *file = fopen("connect_request", "wb");
+  TrackerConnectRequest connect_req = {
+      .protocol_id = htobe64(0x41727101980), // protocol magic value
+      .action = htobe32(ACTION_CONNECT),
+      .transaction_id = htobe32((u32)rand()),
+  };
+  assert(sizeof(connect_req) == 16);
+  FILE *file = fopen("connect_request_1", "wb");
   if (file) {
-    size_t written = fwrite(connect_request_buff, 1, CONNECT_REQUEST_SIZE, file);
-    if (written < CONNECT_REQUEST_SIZE) printf("warning: only wrote %zu of %d bytes.\n", written, CONNECT_REQUEST_SIZE);
+    fwrite(&connect_req, 1, sizeof(connect_req), file);
     fclose(file);
   } else {
     perror("\tfopen");
   }
 
   u32 tries = 1;
-  char resp_buff[1024] = {0};
   struct sockaddr from = {0};
   socklen_t from_len = sizeof(from);
   while (tries <= 8) {
-    if (sendto(fd, connect_request_buff, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
+    if (sendto(fd, &connect_req, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
       printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
       goto cleanup;
     }
 
     setsockopt(fd, SO_RCVTIMEO, 0, NULL, 15 * 2 * tries * tries);
-    isize rc = recvfrom(fd, resp_buff, sizeof(resp_buff), MSG_WAITALL, &from, &from_len);
-    if (rc > 0) break;
+    const isize valid_rc = 16;
+    isize rc = recvfrom(fd, connect_res, sizeof(*connect_res), MSG_WAITALL, &from, &from_len);
+    if (rc >= valid_rc) break;
+    if (rc > 0 && rc < valid_rc) {
+      printf("\tinvalid tracker connect response: wrong length (%ld)\n", rc);
+      goto cleanup;
+    }
     if (rc == 0) {
       printf("\ttracker has closed the connection: %s\n", strerror(errno));
       goto cleanup;
     }
-
     // these errors are timeouts
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       tries++;
@@ -221,24 +222,106 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
   }
 
   // check tracker connect response
-  char connect_response_buff[CONNECT_REQUEST_SIZE - sizeof(protocol_magic_value)] = {0};
-  memcpy(connect_response_buff + 0, &action, 4);
-  memcpy(connect_response_buff + 4, &transaction_id, 4);
-  if (memcmp(connect_response_buff, resp_buff, sizeof(connect_response_buff)) != 0) {
-    printf("\tconnection refused!\n");
+  bool same_transaction_id = connect_res->transaction_id == connect_req.transaction_id;
+  bool same_action = connect_res->action == connect_req.action;
+  if (!same_transaction_id || !same_action) {
+    printf("\tinvalid connect response!\n");
     goto cleanup;
   }
-  u64 connection_id = 0;
-  memcpy((char *)&connection_id, connect_response_buff + 12, sizeof(connection_id));
-  r.connection_id = be64toh(connection_id);
+  u64 connection_id = be64toh(connect_res->connection_id);
   printf("\tsuccessfully connected, connection id: %llu\n", connection_id);
 
+  TorrentTracker tracker = {
+      .connection_id = connection_id,
+      .event = TRACKER_EVENT_NONE,
+      .port = ntohs(ipv4->sin_port),
+  };
+
+  TrackerAnnounceRequest announce_req = {
+      .connection_id = htobe64(connection_id),
+      .action = htobe32(ACTION_ANNOUNCE),
+      .transaction_id = htobe32((u32)rand()),
+      .downloaded = htobe64(tracker.downloaded),
+      .left = htobe64(tracker.left),
+      .uploaded = htobe64(tracker.uploaded),
+      .event = htobe32(TRACKER_EVENT_NONE),
+      .ip = htobe32(0),
+      .key = htobe32(0),
+      .num_want = htobe32(-1),
+      .port = htobe16(ipv4->sin_port),
+  };
+  memcpy(announce_req.info_hash, metainfo->info_hash, 20);
+  memcpy(announce_req.peer_id, peer_id, 20);
+
+  tries = 1;
+  bzero(announce_res, 2048);
+  while (tries <= 8) {
+    if (sendto(fd, &announce_req, ANNOUNCE_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
+      printf("\tfailed to send announce to tracker: %s\n", strerror(errno));
+      goto cleanup;
+    }
+
+    setsockopt(fd, SO_RCVTIMEO, 0, NULL, 15 * 2 * tries * tries);
+    const isize valid_rc = 20;
+    isize rc = recvfrom(fd, announce_res, sizeof(*announce_res), MSG_WAITALL, &from, &from_len);
+    if (valid_rc >= 16) {
+      announce_res = realloc(announce_res, rc);
+      printf("\treceive %ld bytes\n", rc);
+      break;
+    }
+    if (rc > 0 && rc < valid_rc) {
+      printf("\tinvalid tracker connect response: wrong length (%ld)\n", rc);
+      goto cleanup;
+    }
+    if (rc == 0) {
+      printf("\ttracker has closed the connection: %s\n", strerror(errno));
+      goto cleanup;
+    }
+    // these errors are timeouts
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      tries++;
+      continue;
+    }
+    printf("\tfailed to read tracker response: %s\n", strerror(errno));
+    goto cleanup;
+  }
+
+  announce_res->action = be32toh(announce_res->action);
+  announce_res->transaction_id = be32toh(announce_res->transaction_id);
+  announce_res->interval = be32toh(announce_res->interval);
+  announce_res->leechers = be32toh(announce_res->leechers);
+  announce_res->seeders = be32toh(announce_res->seeders);
+  if (announce_res->action != ACTION_ANNOUNCE) {
+    printf("\tinvalid tracker announce response: wrong action\n");
+    goto cleanup;
+  }
+  if (announce_res->transaction_id != be32toh(announce_req.transaction_id)) {
+    printf("\tinvalid tracker announce response: wrong action\n");
+    goto cleanup;
+  }
+  printf("\tinterval: %u\n", announce_res->interval);
+  printf("\tleechers: %u\n", announce_res->leechers);
+  printf("\tseeders: %u\n", announce_res->seeders);
+  printf("\tpeers %lu:\n", (20 - sizeof(*announce_res)) / 6);
+  for (u32 i = 0; i < (20 - sizeof(*announce_res)) / 6; i++) {
+    TorrentPeer peer = torrentPeerGet((char *)announce_res->peers, i);
+    char buf[INET_ADDRSTRLEN] = {0};
+    if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
+      printf("\t(%d)\t failed to parse ipv4: %s\n", i, strerror(errno));
+      continue;
+    }
+    printf("\t(%d)\t ip: %s\t | port: %d\n", i, buf, peer.port);
+  }
+  printf("\n");
+
 cleanup:
+  if (connect_res != NULL) free(connect_res);
+  if (announce_res != NULL) free(announce_res);
   close(fd);
   return r;
 }
 
-TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentMetainfo *metainfo) {
+TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentMetainfo *metainfo, u8 *peer_id) {
   assert(tracker_url.data[0] == 'h');
   assert(tracker_url.data[1] == 't');
   assert(tracker_url.data[2] == 't');
@@ -267,7 +350,7 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
     hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
   }
   offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
-  offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", "k492jal1dkfj9oa3e8se");
+  offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", peer_id);
   offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
   offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
   offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
@@ -301,7 +384,7 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
   return trackerResponseDecode(raw_resp);
 }
 
-u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out) {
+u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]) {
   (void)out;
   u32 result = 0;
   CURL *curl = curl_easy_init();
@@ -320,7 +403,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out)
     (void)resp;
     bool is_udp = tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p';
     if (is_udp) {
-      resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds);
+      resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds, peer_id);
       break;
     } else {
       continue;

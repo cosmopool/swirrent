@@ -58,7 +58,7 @@ typedef struct TorrentMetainfo {
   u8 info_hash[20];
 } TorrentMetainfo;
 
-typedef enum {
+typedef enum : u32 {
   TRACKER_EVENT_NONE,
   TRACKER_EVENT_STARTED,
   TRACKER_EVENT_COMPLETED,
@@ -66,6 +66,8 @@ typedef enum {
 } TrackerEvent;
 
 typedef struct TorrentTracker {
+  u64 connection_id;
+
   // info_hash
   // The 20 byte sha1 hash of the bencoded form of the info value from the
   // metainfo file. This value will almost certainly have to be escaped.
