@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 #define IPV6_LEN 16
-#define IPV4_LEN 8
+#define IPV4_LEN 4
 #define PORT_LEN 2
 
 // core types
