@@ -15,6 +15,13 @@ typedef enum : u32 {
   ACTION_NONE,
 } TrackerAction;
 
+typedef enum : u32 {
+  STATUS_NONE,
+  STATUS_SENT,
+  STATUS_SUCCEED,
+  STATUS_FAILED,
+} TrackerActionStatus;
+
 typedef struct {
   char info_hash[20];
   usize pieces_bitfield;
@@ -65,6 +72,7 @@ typedef struct {
   u64 transaction_id;
   TrackerEvent event;
   TrackerAction action;
+  TrackerActionStatus status;
   u16 port;
   struct sockaddr from;
   socklen_t from_len;

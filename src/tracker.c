@@ -204,11 +204,6 @@ i32 trackerAnnounceFinish(u32 i, struct pollfd *pfds, TrackerPollContext *tracke
     fprintf(stderr, "\ttracker(%d) announce response: invalid tracker connect response: wrong length (%ld)\n", i, bytes_read);
     return -1;
   }
-  if (valid_rc >= 16) {
-    // response = realloc(response, bytes_read);
-    printf("\ttracker(%d) announce response: receive %ld bytes\n", i, bytes_read);
-    return -1;
-  }
 
   if (be32toh(response->action) != ACTION_ANNOUNCE) {
     fprintf(stderr, "\ttracker(%d) announce response: invalid tracker announce response: wrong action\n", i);
@@ -303,6 +298,7 @@ i32 trackerConnectionStart(u32 i, String tracker_url, struct pollfd *pfds, u32 *
   ctx.transaction_id = be32toh(req.transaction_id);
   ctx.action = be32toh(req.action);
   ctx.port = be16toh(ipv4->sin_port);
+  ctx.status = STATUS_SENT;
   // fd_count - 1: because pfdsAddTo always leave the fd_count pointing to an empty place
   trackerpfd[*fd_count - 1] = ctx;
   return 0;
@@ -436,8 +432,8 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     break;
   }
 
-  while (true) {
-    i32 poll_count = poll(pfds, fd_count, 10000);
+  i32 poll_count;
+  while ((poll_count = poll(pfds, fd_count, 10000)) >= 0) {
     if (poll_count == -1) {
       perror("poll");
       exit(1);
@@ -450,21 +446,49 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
       if (!is_ready_to_read) continue;
       switch (trackerpfds[i].action) {
       case ACTION_CONNECT:
-        printf("===| tracker (%d): finished CONNECT\n", trackerpfds[i].idx);
-        if (trackerConnectionFinish(pfds, i, trackerpfds) < 0) {
+        switch (trackerpfds[i].status) {
+        case STATUS_NONE:
+          assert(false);
+        case STATUS_SENT:
+          printf("===| tracker (%d): finished CONNECT\n", trackerpfds[i].idx);
+          if (trackerConnectionFinish(pfds, i, trackerpfds) < 0) {
+            trackerpfds[i].status = STATUS_FAILED;
+          } else {
+            trackerpfds[i].status = STATUS_SUCCEED;
+          }
+          // fallthrough
+        case STATUS_SUCCEED:
+          printf("===| tracker (%d): starting ANNOUNCE\n", trackerpfds[i].idx);
+          if (trackerAnnounceStart(metainfo->info_hash, i, pfds, trackerpfds, peer_id) < 0) {
+            trackerpfds[i].status = STATUS_FAILED;
+          } else {
+            trackerpfds[i].status = STATUS_SENT;
+          }
+          continue;
+        case STATUS_FAILED:
           pfdsDeleteFrom(pfds, trackerpfds, i, &fd_count);
           continue;
         }
-        printf("===| tracker (%d): starting ANNOUNCE\n", trackerpfds[i].idx);
-        trackerAnnounceStart(metainfo->info_hash, i, pfds, trackerpfds, peer_id);
-        continue;
+
       case ACTION_ANNOUNCE:
-        if (trackerAnnounceFinish(i, pfds, trackerpfds) < 0) {
+        switch (trackerpfds[i].status) {
+        case STATUS_NONE:
+          assert(false);
+        case STATUS_SENT:
+          if (trackerAnnounceFinish(i, pfds, trackerpfds) < 0) {
+            trackerpfds[i].status = STATUS_FAILED;
+          } else {
+            trackerpfds[i].status = STATUS_SUCCEED;
+          }
+          // fallthrough
+        case STATUS_SUCCEED:
+          printf("===| tracker (%d): finished ANNOUNCE\n", trackerpfds[i].idx);
+          continue;
+        case STATUS_FAILED:
           pfdsDeleteFrom(pfds, trackerpfds, i, &fd_count);
           continue;
         }
-        printf("===| tracker (%d): finished ANNOUNCE\n", trackerpfds[i].idx);
-        continue;
+
       case ACTION_NONE:
         fprintf(stderr, "\ttracker(%d): unitialized trackerpdf\n", i);
         continue;
