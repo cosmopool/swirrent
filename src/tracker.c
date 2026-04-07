@@ -173,6 +173,7 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 i, struct pollfd *pfds, TrackerPo
   };
   memcpy(request.info_hash, info_hash, 20);
   memcpy(request.peer_id, peer_id, 20);
+  trackerpfds[i].transaction_id = be32toh(request.transaction_id);
 
   if (sendto(pfds[i].fd, &request, ANNOUNCE_SIZE, 0, trackerpfds[i].addr->ai_addr, trackerpfds[i].addr->ai_addrlen) < 0) {
     fprintf(stderr, "\tfailed to send announce to tracker: %s\n", strerror(errno));
@@ -188,7 +189,7 @@ i32 trackerAnnounceFinish(u32 i, struct pollfd *pfds, TrackerPollContext *tracke
   // TrackerAnnounceResponse *response = malloc(2048);
   // bzero(response, 2048);
 
-  isize bytes_read = recvfrom(pfds[i].fd, response, sizeof(*response), MSG_WAITALL, &trackerpfds[i].from, &trackerpfds[i].from_len);
+  isize bytes_read = recvfrom(pfds[i].fd, response, sizeof(buff), MSG_WAITALL, &trackerpfds[i].from, &trackerpfds[i].from_len);
   if (bytes_read == 0) {
     fprintf(stderr, "\ttracker(%d) announce response: tracker has closed the connection: %s\n", i, strerror(errno));
     return -1;
@@ -216,8 +217,9 @@ i32 trackerAnnounceFinish(u32 i, struct pollfd *pfds, TrackerPollContext *tracke
   printf("\ttracker(%d): interval: %u\n", i, be32toh(response->interval));
   printf("\ttracker(%d): leechers: %u\n", i, be32toh(response->leechers));
   printf("\ttracker(%d): seeders: %u\n", i, be32toh(response->seeders));
-  printf("\ttracker(%d): peers %lu:\n", i, (20 - sizeof(*response)) / 6);
-  for (u32 j = 0; j < (20 - sizeof(*response)) / 6; j++) {
+  printf("\ttracker(%d): peers %lu:\n", i, (bytes_read - sizeof(*response)) / 6);
+  printf("\ttracker(%d): response size %lu:\n", i, bytes_read);
+  for (u32 j = 0; j < (bytes_read - sizeof(*response)) / 6; j++) {
     TorrentPeer peer = torrentPeerGet((char *)response->peers, j);
     char buf[INET_ADDRSTRLEN] = {0};
     if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
