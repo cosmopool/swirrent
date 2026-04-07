@@ -157,10 +157,10 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 i, struct pollfd *pfds, TrackerPo
       .port = trackerpfds[i].port,
   };
 
-  trackerpfds->action = ACTION_ANNOUNCE;
+  trackerpfds[i].action = ACTION_ANNOUNCE;
   TrackerAnnounceRequest request = {
       .connection_id = htobe64(trackerpfds[i].connection_id),
-      .action = htobe32(trackerpfds->action),
+      .action = htobe32(trackerpfds[i].action),
       .transaction_id = htobe32((u32)rand()),
       .downloaded = htobe64(tracker.downloaded),
       .left = htobe64(tracker.left),
