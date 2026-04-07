@@ -1,9 +1,7 @@
-#include "torrent.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <curl/curl.h>
 #include <errno.h>
-#include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
@@ -11,17 +9,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/endian.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 #include <unistd.h>
 
 #define STRING_IMPLEMENTATION
 #include "core.h"
+#include "torrent.h"
 #include "tracker.h"
+
+#define FD_SIZE 400
+#define PORT "6666"
 
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
+
+void pfdsAddTo(struct pollfd *pfds, i32 new_fd, u32 *fd_count) {
+  assert(*fd_count < FD_SIZE);
+  // If we don't have room, add more space in the pfds array
+  // if (*fd_count == *fd_size) {
+  //   *fd_size *= 2;
+  //   *pfds = realloc(*pfds, sizeof(**pfds) * (*fd_size));
+  // }
+  pfds[*fd_count].fd = new_fd;
+  pfds[*fd_count].events = POLLIN; // Check ready-to-read
+  pfds[*fd_count].revents = 0;
+  (*fd_count)++;
+}
+
+void pfdsDeleteFrom(struct pollfd pfds[], TrackerPollContext ctx[], u32 i, u32 *fd_count) {
+  // Copy the one from the end over this one
+  pfds[i] = pfds[*fd_count - 1];
+  ctx[i] = ctx[*fd_count - 1];
+  (*fd_count)--;
+}
 
 // simple write callback
 usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
@@ -98,8 +119,6 @@ TorrentTrackerResponse trackerResponseDecode(String resp) {
   return t_resp;
 }
 
-#include <string.h>
-
 void parse_tracker_url(String url, char *host, size_t host_len, char *port, size_t port_len) {
   // Skip "udp://" or "http://"
   const char *p = strstr(url.data, "://");
@@ -131,115 +150,17 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
   }
 }
 
-TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *metainfo, struct pollfd udp_tracker_pfds[200], u8 peer_id[20]) {
-  assert(tracker_url.data[0] == 'u');
-  assert(tracker_url.data[1] == 'd');
-  assert(tracker_url.data[2] == 'p');
-  TrackerConnectResponse *connect_res = malloc(1024);
-  TrackerAnnounceResponse *announce_res = malloc(2048);
-
-  TorrentTrackerResponse r = {0};
-  struct addrinfo *tracker_addr, hints = {
-                                     .ai_family = AF_INET,
-                                     .ai_socktype = SOCK_DGRAM,
-                                 };
-
-  char host[256], port[16];
-  parse_tracker_url(tracker_url, host, sizeof(host), port, sizeof(port));
-  i32 get_addr_status;
-  if ((get_addr_status = getaddrinfo(host, port, &hints, &tracker_addr)) != 0) {
-    fprintf(stderr, "\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
-    return r;
-  }
-  // print ipv4 of tracker
-  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)tracker_addr->ai_addr;
-  char ip[INET_ADDRSTRLEN];
-  inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
-  printf("\topening socket for: %s:%d\n", ip, ntohs(ipv4->sin_port));
-
-  assert(tracker_addr->ai_family == AF_INET);
-  assert(tracker_addr->ai_socktype == SOCK_DGRAM);
-  i32 fd = socket(tracker_addr->ai_family, tracker_addr->ai_socktype, tracker_addr->ai_protocol);
-  if (fd < 0) {
-    printf("\tsocket error: %s\n", strerror(errno));
-    goto cleanup;
-  }
-
-  // bind to any port
-  struct sockaddr_in src = {
-      .sin_family = AF_INET,
-      .sin_addr.s_addr = htonl(INADDR_ANY),
-      .sin_port = htons(0),
-  };
-  if (bind(fd, (struct sockaddr *)&src, sizeof(src)) < 0) {
-    printf("\tfailed to bind to tracker fd: %s\n", strerror(errno));
-    goto cleanup;
-  }
-
-  // send connect request
-  TrackerConnectRequest connect_req = {
-      .protocol_id = htobe64(0x41727101980), // protocol magic value
-      .action = htobe32(ACTION_CONNECT),
-      .transaction_id = htobe32((u32)rand()),
-  };
-  assert(sizeof(connect_req) == 16);
-  FILE *file = fopen("connect_request_1", "wb");
-  if (file) {
-    fwrite(&connect_req, 1, sizeof(connect_req), file);
-    fclose(file);
-  } else {
-    perror("\tfopen");
-  }
-
-  u32 tries = 1;
-  struct sockaddr from = {0};
-  socklen_t from_len = sizeof(from);
-  while (tries <= 8) {
-    if (sendto(fd, &connect_req, CONNECT_REQUEST_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
-      printf("\tfailed to send connect request to tracker: %s\n", strerror(errno));
-      goto cleanup;
-    }
-
-    setsockopt(fd, SO_RCVTIMEO, 0, NULL, 15 * 2 * tries * tries);
-    const isize valid_rc = 16;
-    isize rc = recvfrom(fd, connect_res, sizeof(*connect_res), MSG_WAITALL, &from, &from_len);
-    if (rc >= valid_rc) break;
-    if (rc > 0 && rc < valid_rc) {
-      printf("\tinvalid tracker connect response: wrong length (%ld)\n", rc);
-      goto cleanup;
-    }
-    if (rc == 0) {
-      printf("\ttracker has closed the connection: %s\n", strerror(errno));
-      goto cleanup;
-    }
-    // these errors are timeouts
-    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      tries++;
-      continue;
-    }
-    printf("\tfailed to read tracker response: %s\n", strerror(errno));
-    goto cleanup;
-  }
-
-  // check tracker connect response
-  bool same_transaction_id = connect_res->transaction_id == connect_req.transaction_id;
-  bool same_action = connect_res->action == connect_req.action;
-  if (!same_transaction_id || !same_action) {
-    printf("\tinvalid connect response!\n");
-    goto cleanup;
-  }
-  u64 connection_id = be64toh(connect_res->connection_id);
-  printf("\tsuccessfully connected, connection id: %llu\n", connection_id);
-
+i32 trackerAnnounceStart(u8 info_hash[20], u32 i, struct pollfd *pfds, TrackerPollContext *trackerpfds, u8 peer_id[20]) {
   TorrentTracker tracker = {
-      .connection_id = connection_id,
+      .connection_id = trackerpfds[i].connection_id,
       .event = TRACKER_EVENT_NONE,
-      .port = ntohs(ipv4->sin_port),
+      .port = trackerpfds[i].port,
   };
 
-  TrackerAnnounceRequest announce_req = {
-      .connection_id = htobe64(connection_id),
-      .action = htobe32(ACTION_ANNOUNCE),
+  trackerpfds->action = ACTION_ANNOUNCE;
+  TrackerAnnounceRequest request = {
+      .connection_id = htobe64(trackerpfds[i].connection_id),
+      .action = htobe32(trackerpfds->action),
       .transaction_id = htobe32((u32)rand()),
       .downloaded = htobe64(tracker.downloaded),
       .left = htobe64(tracker.left),
@@ -248,77 +169,175 @@ TorrentTrackerResponse trackerUdpFetch(String tracker_url, TorrentMetainfo *meta
       .ip = htobe32(0),
       .key = htobe32(0),
       .num_want = htobe32(-1),
-      .port = htobe16(ipv4->sin_port),
+      .port = htobe16(trackerpfds[i].port),
   };
-  memcpy(announce_req.info_hash, metainfo->info_hash, 20);
-  memcpy(announce_req.peer_id, peer_id, 20);
+  memcpy(request.info_hash, info_hash, 20);
+  memcpy(request.peer_id, peer_id, 20);
 
-  tries = 1;
-  bzero(announce_res, 2048);
-  while (tries <= 8) {
-    if (sendto(fd, &announce_req, ANNOUNCE_SIZE, 0, tracker_addr->ai_addr, tracker_addr->ai_addrlen) < 0) {
-      printf("\tfailed to send announce to tracker: %s\n", strerror(errno));
-      goto cleanup;
-    }
+  if (sendto(pfds[i].fd, &request, ANNOUNCE_SIZE, 0, trackerpfds[i].addr->ai_addr, trackerpfds[i].addr->ai_addrlen) < 0) {
+    fprintf(stderr, "\tfailed to send announce to tracker: %s\n", strerror(errno));
+    return -1;
+  }
 
-    setsockopt(fd, SO_RCVTIMEO, 0, NULL, 15 * 2 * tries * tries);
-    const isize valid_rc = 20;
-    isize rc = recvfrom(fd, announce_res, sizeof(*announce_res), MSG_WAITALL, &from, &from_len);
-    if (valid_rc >= 16) {
-      announce_res = realloc(announce_res, rc);
-      printf("\treceive %ld bytes\n", rc);
-      break;
-    }
-    if (rc > 0 && rc < valid_rc) {
-      printf("\tinvalid tracker connect response: wrong length (%ld)\n", rc);
-      goto cleanup;
-    }
-    if (rc == 0) {
-      printf("\ttracker has closed the connection: %s\n", strerror(errno));
-      goto cleanup;
-    }
+  return 0;
+}
+
+i32 trackerAnnounceFinish(u32 i, struct pollfd *pfds, TrackerPollContext *trackerpfds) {
+  u8 buff[2048] = {0};
+  TrackerAnnounceResponse *response = (TrackerAnnounceResponse *)buff;
+  // TrackerAnnounceResponse *response = malloc(2048);
+  // bzero(response, 2048);
+
+  isize bytes_read = recvfrom(pfds[i].fd, response, sizeof(*response), MSG_WAITALL, &trackerpfds[i].from, &trackerpfds[i].from_len);
+  if (bytes_read == 0) {
+    fprintf(stderr, "\ttracker(%d) announce response: tracker has closed the connection: %s\n", i, strerror(errno));
+    return -1;
+  }
+  if (bytes_read < 0) {
     // these errors are timeouts
-    else if (errno == EAGAIN || errno == EWOULDBLOCK) {
-      tries++;
-      continue;
-    }
-    printf("\tfailed to read tracker response: %s\n", strerror(errno));
-    goto cleanup;
+    assert(errno != EAGAIN && errno != EWOULDBLOCK);
+    fprintf(stderr, "\ttracker(%d) announce response: failed to read tracker response: %s\n", i, strerror(errno));
+    return -1;
+  }
+  const isize valid_rc = 20;
+  if (bytes_read < valid_rc) {
+    fprintf(stderr, "\ttracker(%d) announce response: invalid tracker connect response: wrong length (%ld)\n", i, bytes_read);
+    return -1;
+  }
+  if (valid_rc >= 16) {
+    // response = realloc(response, bytes_read);
+    printf("\ttracker(%d) announce response: receive %ld bytes\n", i, bytes_read);
+    return -1;
   }
 
-  announce_res->action = be32toh(announce_res->action);
-  announce_res->transaction_id = be32toh(announce_res->transaction_id);
-  announce_res->interval = be32toh(announce_res->interval);
-  announce_res->leechers = be32toh(announce_res->leechers);
-  announce_res->seeders = be32toh(announce_res->seeders);
-  if (announce_res->action != ACTION_ANNOUNCE) {
-    printf("\tinvalid tracker announce response: wrong action\n");
-    goto cleanup;
+  if (be32toh(response->action) != ACTION_ANNOUNCE) {
+    fprintf(stderr, "\ttracker(%d) announce response: invalid tracker announce response: wrong action\n", i);
+    return -1;
   }
-  if (announce_res->transaction_id != be32toh(announce_req.transaction_id)) {
-    printf("\tinvalid tracker announce response: wrong action\n");
-    goto cleanup;
+  if (be32toh(response->transaction_id) != trackerpfds[i].transaction_id) {
+    fprintf(stderr, "\ttracker(%d) announce response: invalid tracker announce response: wrong transaction id\n", i);
+    return -1;
   }
-  printf("\tinterval: %u\n", announce_res->interval);
-  printf("\tleechers: %u\n", announce_res->leechers);
-  printf("\tseeders: %u\n", announce_res->seeders);
-  printf("\tpeers %lu:\n", (20 - sizeof(*announce_res)) / 6);
-  for (u32 i = 0; i < (20 - sizeof(*announce_res)) / 6; i++) {
-    TorrentPeer peer = torrentPeerGet((char *)announce_res->peers, i);
+  printf("\ttracker(%d): interval: %u\n", i, be32toh(response->interval));
+  printf("\ttracker(%d): leechers: %u\n", i, be32toh(response->leechers));
+  printf("\ttracker(%d): seeders: %u\n", i, be32toh(response->seeders));
+  printf("\ttracker(%d): peers %lu:\n", i, (20 - sizeof(*response)) / 6);
+  for (u32 j = 0; j < (20 - sizeof(*response)) / 6; j++) {
+    TorrentPeer peer = torrentPeerGet((char *)response->peers, j);
     char buf[INET_ADDRSTRLEN] = {0};
     if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
-      printf("\t(%d)\t failed to parse ipv4: %s\n", i, strerror(errno));
-      continue;
+      fprintf(stderr, "\t(%d)\t failed to parse ipv4: %s\n", j, strerror(errno));
+      return -1;
     }
-    printf("\t(%d)\t ip: %s\t | port: %d\n", i, buf, peer.port);
+    printf("\t(%d)\t ip: %s\t | port: %d\n", j, buf, peer.port);
   }
   printf("\n");
 
-cleanup:
-  if (connect_res != NULL) free(connect_res);
-  if (announce_res != NULL) free(announce_res);
-  close(fd);
-  return r;
+  return 0;
+  // cleanup:
+  //   if (response != NULL) free(response);
+  //   return -1;
+}
+
+i32 trackerConnectionStart(u32 i, String tracker_url, struct pollfd *pfds, u32 *fd_count, TrackerPollContext *trackerpfd) {
+  assert(tracker_url.data[0] == 'u');
+  assert(tracker_url.data[1] == 'd');
+  assert(tracker_url.data[2] == 'p');
+
+  TrackerPollContext ctx = {.url = tracker_url, .idx = i};
+  struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
+  // resolve tracker ip
+  char host[256], port[16];
+  parse_tracker_url(tracker_url, host, sizeof(host), port, sizeof(port));
+  i32 get_addr_status;
+  if ((get_addr_status = getaddrinfo(host, port, &hints, &ctx.addr)) != 0) {
+    fprintf(stderr, "\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
+    return -1;
+  }
+  // print ipv4 of tracker
+  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)ctx.addr->ai_addr;
+  char ip[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
+  printf("\topening socket for: %s:%d\n", ip, ntohs(ipv4->sin_port));
+  // nintendo switch only supports ipv4
+  assert(ctx.addr->ai_family == AF_INET);
+  assert(ctx.addr->ai_socktype == SOCK_DGRAM);
+
+  // opening socket
+  i32 fd = socket(ctx.addr->ai_family, ctx.addr->ai_socktype, ctx.addr->ai_protocol);
+  if (fd < 0) {
+    fprintf(stderr, "\tsocket error: %s\n", strerror(errno));
+    return -1;
+  }
+  pfdsAddTo(pfds, fd, fd_count);
+
+  // bind to any port
+  struct sockaddr_in src = {
+      .sin_family = AF_INET,
+      .sin_addr.s_addr = htonl(INADDR_ANY),
+      .sin_port = htons(0),
+  };
+  if (bind(fd, (struct sockaddr *)&src, sizeof(src)) < 0) {
+    fprintf(stderr, "\tfailed to bind to tracker fd: %s\n", strerror(errno));
+    pfdsDeleteFrom(pfds, trackerpfd, *fd_count - 1, fd_count);
+    return -1;
+  }
+
+  // send connect request
+  u64 protocol_fixed_value = 0x41727101980;
+  trackerpfd->action = ACTION_CONNECT;
+  TrackerConnectRequest req = {
+      .protocol_id = htobe64(protocol_fixed_value),
+      .action = htobe32(trackerpfd->action),
+      .transaction_id = htobe32((u32)rand()),
+  };
+  assert(sizeof(req) == 16);
+
+  printf("\t--- sending connect request to tracker\n");
+  if (sendto(fd, &req, CONNECT_REQUEST_SIZE, 0, ctx.addr->ai_addr, ctx.addr->ai_addrlen) < 0) {
+    fprintf(stderr, "\tfailed to send connect request to tracker: %s\n", strerror(errno));
+    pfdsDeleteFrom(pfds, trackerpfd, *fd_count - 1, fd_count);
+    return -1;
+  }
+
+  ctx.transaction_id = be32toh(req.transaction_id);
+  ctx.action = be32toh(req.action);
+  ctx.port = be16toh(ipv4->sin_port);
+  // fd_count - 1: because pfdsAddTo always leave the fd_count pointing to an empty place
+  trackerpfd[*fd_count - 1] = ctx;
+  return 0;
+}
+
+i32 trackerConnectionFinish(struct pollfd *fds, u32 i, TrackerPollContext *trackerpfd) {
+  TrackerConnectResponse *response = malloc(1024);
+  isize bytes_read = recvfrom(fds[i].fd, response, sizeof(*response), MSG_WAITALL, &trackerpfd->from, &trackerpfd->from_len);
+  if (bytes_read == 0) {
+    fprintf(stderr, "\ttracker (%d) connect response: connection was closed by tracker: %s\n", i, strerror(errno));
+    return -1;
+  }
+  if (bytes_read < 0) {
+    // these errors are timeouts
+    assert(errno != EAGAIN || errno != EWOULDBLOCK);
+    fprintf(stderr, "\ttracker (%d) connect response: failed to read response: %s\n", i, strerror(errno));
+    return -1;
+  }
+  const isize valid_length = 16;
+  if (bytes_read < valid_length) {
+    fprintf(stderr, "\ttracker (%d) connect response: wrong length (%ld)\n", i, bytes_read);
+    return -1;
+  }
+  // check tracker connect response
+  if (be32toh(response->transaction_id) != trackerpfd[i].transaction_id) {
+    fprintf(stderr, "\ttracker (%d) connect response: invalid transaction_id in response!\n", i);
+    return -1;
+  }
+  if (be32toh(response->action) != trackerpfd[i].action) {
+    fprintf(stderr, "\ttracker (%d) connect response: action in response!\n", i);
+    return -1;
+  }
+  trackerpfd[i].connection_id = be64toh(response->connection_id);
+  printf("\ttracker (%d): successfully connected with id: %llu\n", i, trackerpfd[i].connection_id);
+  return 0;
 }
 
 TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentMetainfo *metainfo, u8 *peer_id) {
@@ -385,16 +404,19 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
 }
 
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]) {
+  (void)peer_id;
   (void)out;
   u32 result = 0;
-  CURL *curl = curl_easy_init();
-  if (!curl) {
-    curl_easy_cleanup(curl);
-    curl_global_cleanup();
-    return 1;
-  }
+  // CURL *curl = curl_easy_init();
+  // if (!curl) {
+  //   curl_easy_cleanup(curl);
+  //   curl_global_cleanup();
+  //   return 1;
+  // }
 
-  struct pollfd udp_tracker_pfds[200];
+  u32 fd_count = 0;
+  struct pollfd pfds[FD_SIZE] = {0};
+  TrackerPollContext trackerpfds[FD_SIZE] = {0};
 
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
     String tracker_url = metainfo->trackers_url[j];
@@ -403,19 +425,55 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     (void)resp;
     bool is_udp = tracker_url.data[0] == 'u' && tracker_url.data[1] == 'd' && tracker_url.data[2] == 'p';
     if (is_udp) {
-      resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds, peer_id);
-      break;
+      // resp = trackerUdpFetch(tracker_url, metainfo, udp_tracker_pfds, peer_id);
+      if (trackerConnectionStart(j, tracker_url, pfds, &fd_count, trackerpfds) < 0) continue;
     } else {
       continue;
       // resp = trackerHttpFetch(curl, tracker_url, metainfo);
     }
-    // if (resp.peers.len == 0 && resp.peers6.len == 0) continue;
-    // *out = resp;
-    // break;
+    if (resp.peers.len == 0 && resp.peers6.len == 0) continue;
+    *out = resp;
+    break;
   }
 
-  curl_easy_cleanup(curl);
-  curl_global_cleanup();
+  while (true) {
+    i32 poll_count = poll(pfds, fd_count, 10000);
+    if (poll_count == -1) {
+      perror("poll");
+      exit(1);
+    }
+
+    // Run through connections looking for data to read
+    for (i32 i = fd_count - 1; i >= 0; i--) {
+      if (pfds[i].fd == 0) continue;
+      bool is_ready_to_read = pfds[i].revents & (POLLIN | POLLHUP);
+      if (!is_ready_to_read) continue;
+      switch (trackerpfds[i].action) {
+      case ACTION_CONNECT:
+        printf("===| tracker (%d): finished CONNECT\n", trackerpfds[i].idx);
+        if (trackerConnectionFinish(pfds, i, trackerpfds) < 0) {
+          pfdsDeleteFrom(pfds, trackerpfds, i, &fd_count);
+          continue;
+        }
+        printf("===| tracker (%d): starting ANNOUNCE\n", trackerpfds[i].idx);
+        trackerAnnounceStart(metainfo->info_hash, i, pfds, trackerpfds, peer_id);
+        continue;
+      case ACTION_ANNOUNCE:
+        if (trackerAnnounceFinish(i, pfds, trackerpfds) < 0) {
+          pfdsDeleteFrom(pfds, trackerpfds, i, &fd_count);
+          continue;
+        }
+        printf("===| tracker (%d): finished ANNOUNCE\n", trackerpfds[i].idx);
+        continue;
+      case ACTION_NONE:
+        fprintf(stderr, "\ttracker(%d): unitialized trackerpdf\n", i);
+        continue;
+      }
+    }
+  }
+
+  // curl_easy_cleanup(curl);
+  // curl_global_cleanup();
   return result;
 }
 

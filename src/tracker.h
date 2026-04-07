@@ -1,5 +1,8 @@
 #pragma once
 
+#include <netdb.h>
+#include <sys/socket.h>
+
 #include "swirrent.h"
 #include "torrent.h"
 
@@ -9,6 +12,7 @@
 typedef enum : u32 {
   ACTION_CONNECT,
   ACTION_ANNOUNCE,
+  ACTION_NONE,
 } TrackerAction;
 
 typedef struct {
@@ -53,6 +57,21 @@ typedef struct {
   u32 seeders;
   u8 peers[];
 } __attribute__((packed)) TrackerAnnounceResponse;
+
+typedef struct {
+  // i32 fd;
+  u32 tries;
+  u64 connection_id;
+  u64 transaction_id;
+  TrackerEvent event;
+  TrackerAction action;
+  u16 port;
+  struct sockaddr from;
+  socklen_t from_len;
+  struct addrinfo *addr;
+  String url;
+  u32 idx;
+} TrackerPollContext;
 
 void trackerOptionsSet(SwirrentOptions *);
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]);
