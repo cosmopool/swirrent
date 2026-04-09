@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <poll.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #include "asio.h"
@@ -25,7 +26,7 @@ void asioFdUnset(i32 fd) {
   num_pfds--;
 }
 
-void asioWaitForEvents(void) {
+void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
   i32 poll_count;
   while ((poll_count = poll(pfds, num_pfds, 10000)) >= 0) {
     if (poll_count == -1) {
@@ -44,7 +45,7 @@ void asioWaitForEvents(void) {
       bool has_callback = pfds_ctx[fd].on_ready_callback != NULL;
       if (!has_callback) continue;
 
-      pfds_ctx[fd].on_ready_callback(fd, NULL, NULL);
+      pfds_ctx[fd].on_ready_callback(fd, m, id);
     }
   }
 }

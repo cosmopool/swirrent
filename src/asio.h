@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core.h"
+#include "torrent.h"
 #include <sys/poll.h>
 
 #define MAX_FD 1024
@@ -17,4 +18,4 @@ typedef struct {
 
 void asioFdSet(AsioFd asio_fd);
 void asioFdUnset(i32 fd);
-void asioWaitForEvents(void);
+void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]);

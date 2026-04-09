@@ -223,7 +223,7 @@ i32 trackerAnnounceFinish(u32 fd) {
   //   return -1;
 }
 
-i32 trackerConnectionStart(u32 i, TrackerState *tracker) {
+i32 trackerConnectionStart(TrackerState *tracker) {
   assert(tracker->url.data[0] == 'u');
   assert(tracker->url.data[1] == 'd');
   assert(tracker->url.data[2] == 'p');
@@ -472,7 +472,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     break;
   }
 
-  asioWaitForEvents();
+  asioWaitForEvents(metainfo, peer_id);
 
   // curl_easy_cleanup(curl);
   // curl_global_cleanup();
