@@ -66,7 +66,7 @@ typedef struct {
 } __attribute__((packed)) TrackerAnnounceResponse;
 
 typedef struct {
-  // i32 fd;
+  u32 id;
   u32 tries;
   u64 connection_id;
   u64 transaction_id;
@@ -74,12 +74,11 @@ typedef struct {
   TrackerAction action;
   TrackerActionStatus status;
   u16 port;
-  struct sockaddr from;
-  socklen_t from_len;
+  // struct sockaddr from;
+  // socklen_t from_len;
   struct addrinfo *addr;
   String url;
-  u32 idx;
-} TrackerPollContext;
+} TrackerState;
 
 void trackerOptionsSet(SwirrentOptions *);
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]);
