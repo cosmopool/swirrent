@@ -9,6 +9,14 @@
 #define IPV4_LEN 4
 #define PORT_LEN 2
 
+#define ASSERT(expr, msg)                                         \
+  if (!(expr)) {                                                  \
+    fprintf(stderr,                                               \
+            "%s:%u: failed assertion (" __STRING(expr) "): %s\n", \
+            __FILE__, __LINE__, (msg));                           \
+    exit(1);                                                      \
+  }
+
 // core types
 typedef int8_t i8;
 typedef int16_t i16;
