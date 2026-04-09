@@ -234,26 +234,26 @@ i32 trackerConnectionStart(TrackerState *tracker) {
   parse_tracker_url(tracker->url, host, sizeof(host), port, sizeof(port));
   // TODO: turn getaddrinfo call into asynchronous because it blocks
   i32 get_addr_status;
-  if ((get_addr_status = getaddrinfo(host, port, &hints, &tracker->addr)) != 0) {
+  struct addrinfo *addr;
+  if ((get_addr_status = getaddrinfo(host, port, &hints, &addr)) != 0) {
     fprintf(stderr, "\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
     return -1;
   }
   // print ipv4 of tracker
-  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)tracker->addr->ai_addr;
+  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)addr->ai_addr;
   char ip[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
   printf("\topening socket for: %s:%d\n", ip, ntohs(ipv4->sin_port));
   // nintendo switch only supports ipv4
-  assert(tracker->addr->ai_family == AF_INET);
-  assert(tracker->addr->ai_socktype == SOCK_DGRAM);
+  assert(addr->ai_family == AF_INET);
+  assert(addr->ai_socktype == SOCK_DGRAM);
 
   // opening socket
-  i32 fd = socket(tracker->addr->ai_family, tracker->addr->ai_socktype, tracker->addr->ai_protocol);
+  i32 fd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
   if (fd < 0) {
     fprintf(stderr, "\tsocket error: %s\n", strerror(errno));
-    return -1;
+    return fd;
   }
-  asioFdSet((AsioFd){.fd = fd});
 
   // bind to any port
   struct sockaddr_in src = {
@@ -269,25 +269,27 @@ i32 trackerConnectionStart(TrackerState *tracker) {
 
   // send connect request
   u64 protocol_fixed_value = 0x41727101980;
-  tracker->action = ACTION_CONNECT;
+  u32 action = ACTION_CONNECT;
   TrackerConnectRequest req = {
       .protocol_id = htobe64(protocol_fixed_value),
-      .action = htobe32(tracker->action),
+      .action = htobe32(action),
       .transaction_id = htobe32((u32)rand()),
   };
   assert(sizeof(req) == 16);
 
   printf("\t--- sending connect request to tracker\n");
-  if (sendto(fd, &req, CONNECT_REQUEST_SIZE, 0, tracker->addr->ai_addr, tracker->addr->ai_addrlen) < 0) {
+  if (sendto(fd, &req, CONNECT_REQUEST_SIZE, 0, addr->ai_addr, addr->ai_addrlen) < 0) {
     fprintf(stderr, "\tfailed to send connect request to tracker: %s\n", strerror(errno));
     close(fd);
     return -1;
   }
 
+  tracker->action = ACTION_CONNECT;
+  tracker->status = STATUS_SENT;
   tracker->transaction_id = be32toh(req.transaction_id);
   tracker->action = be32toh(req.action);
   tracker->port = be16toh(ipv4->sin_port);
-  tracker->status = STATUS_SENT;
+  tracker->addr = addr;
 
   return fd;
 }
@@ -322,7 +324,7 @@ i32 trackerConnectionFinish(i32 fd) {
     return -1;
   }
   trackers[fd].connection_id = be64toh(response->connection_id);
-  printf("\ttracker (%d): successfully connected with id: %lu\n", trackers[fd].id, trackers[fd].connection_id);
+  printf("\ttracker (%d): successfully connected with id: %llu\n", trackers[fd].id, trackers[fd].connection_id);
   return 0;
 }
 
@@ -389,34 +391,44 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
   return trackerResponseDecode(raw_resp);
 }
 
+void freeTrackerState(TrackerState *t) {
+  if (t->addr) freeaddrinfo(t->addr);
+  *t = (TrackerState){.action = ACTION_NONE};
+}
+
 void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
   TorrentMetainfo *metainfo = m;
 
+  printf("===| tracker (%d)\n", trackers[fd].id);
   switch (trackers[fd].action) {
   case ACTION_CONNECT:
     switch (trackers[fd].status) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
-      printf("===| tracker (%d): finished CONNECT\n", trackers[fd].id);
+      printf("\tCONNECT decoding response\n");
       if (trackerConnectionFinish(fd) < 0) {
         trackers[fd].status = STATUS_FAILED;
       } else {
         trackers[fd].status = STATUS_SUCCEED;
       }
-      // fallthrough
+      trackerStateResolver(fd, m, peer_id);
+      return;
     case STATUS_SUCCEED:
-      printf("===| tracker (%d): starting ANNOUNCE\n", trackers[fd].id);
+      printf("\tCONNECT succeed\n");
+      printf("\tANNOUNCE sent\n");
       if (trackerAnnounceStart(metainfo->info_hash, fd, peer_id) < 0) {
         trackers[fd].status = STATUS_FAILED;
+        trackerStateResolver(fd, m, peer_id);
       } else {
         trackers[fd].status = STATUS_SENT;
       }
-      break;
+      return;
     case STATUS_FAILED:
+      printf("\tCONNECT failed\n");
       asioFdUnset(fd);
-      trackers[fd] = (TrackerState){0};
-      break;
+      freeTrackerState(trackers + fd);
+      return;
     }
 
   case ACTION_ANNOUNCE:
@@ -424,19 +436,24 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
+      printf("\tANNOUNCE decoding response\n");
       if (trackerAnnounceFinish(fd) < 0) {
         trackers[fd].status = STATUS_FAILED;
       } else {
         trackers[fd].status = STATUS_SUCCEED;
       }
-      // fallthrough
+      trackerStateResolver(fd, m, peer_id);
+      return;
     case STATUS_SUCCEED:
-      printf("===| tracker (%d): finished ANNOUNCE\n", trackers[fd].id);
-      break;
-    case STATUS_FAILED:
+      printf("\tANNOUNCE succeed\n");
       asioFdUnset(fd);
-      trackers[fd] = (TrackerState){0};
-      break;
+      freeTrackerState(trackers + fd);
+      return;
+    case STATUS_FAILED:
+      printf("\tANNOUNCE failed\n");
+      asioFdUnset(fd);
+      freeTrackerState(trackers + fd);
+      return;
     }
 
   case ACTION_NONE:
@@ -460,9 +477,14 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
 
-    TrackerState tracker_state = {.url = url, .id = j};
-    i32 fd = trackerConnectionStart(j, &tracker_state);
-    if (fd < 0) continue;
+    TrackerState tracker_state = {.url = url, .id = j, .action = ACTION_NONE};
+    printf("\tCONNECT sent\n");
+    i32 fd = trackerConnectionStart(&tracker_state);
+    if (fd < 0) {
+      printf("\tCONNECT failed\n");
+      freeTrackerState(&tracker_state);
+      continue;
+    }
     asioFdSet((AsioFd){.fd = fd, .on_ready_callback = trackerStateResolver});
     trackers[fd] = tracker_state;
 
