@@ -26,6 +26,16 @@ void asioFdUnset(i32 fd) {
   num_pfds--;
 }
 
+void asioUnsetAll() {
+  usize remaning = num_pfds;
+  for (i32 i = 0; i < MAX_FD; i++) {
+    if (remaning < 0) return;
+    if (pfds[i].fd <= 0) continue;
+    asioFdUnset(i);
+    remaning--;
+  }
+}
+
 void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
   u32 tries = 0;
   i32 poll_count;

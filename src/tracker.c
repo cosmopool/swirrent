@@ -473,6 +473,11 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
   }
 
   asioWaitForEvents(metainfo, peer_id);
+  asioUnsetAll();
+  for (u32 i = 0; i <= MAX_FD; i++) {
+    if (trackers[i].id == 0) continue;
+    freeTrackerState(trackers + i);
+  }
 
   // curl_easy_cleanup(curl);
   // curl_global_cleanup();
