@@ -39,6 +39,35 @@ typedef float f32;
 typedef double f64;
 // core types
 
+// ---------- DynamicArray
+
+// typedef struct {
+//   u32 capacity;
+//   u32 count;
+//   void *data;
+// } DynamicArray;
+//
+// DynamicArray dynamicArrayInit(u32 initial_capacity) {
+//   return (DynamicArray){
+//       .capacity = initial_capacity,
+//       .data = calloc(initial_capacity, sizeof(FdIndex)),
+//   };
+// }
+//
+// void dynamicArrayCleanup(DynamicArray *da) {
+//   free(da->data);
+// }
+//
+// int dynamicArrayAdd(DynamicArray *da, FdIndex fd_index) {
+//   if (da->count + 1 > da->capacity) {
+//     da->capacity *= 2;
+//     da->data = realloc(da->data, da->capacity);
+//   }
+//   da->count++;
+//   assert(da->count < da->capacity);
+//   ((FdIndex *)da->data)[da->count] = fd_index;
+// }
+
 // ---------- String
 
 /**
