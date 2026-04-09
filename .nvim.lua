@@ -59,7 +59,7 @@ dap.configurations.c = {
     request = "launch",
     program = function()
       os.execute(
-        "clang -g -O0 -Wall -Werror -Wcast-align -Wunreachable-code -lcurl -o decoder src/swirrent_pc.c src/swirrent.c src/bencode.c src/torrent.c src/tracker.c")
+        "clang -g -O0 -Wall -Werror -Wcast-align -Wunreachable-code -lcurl -o decoder src/swirrent_pc.c src/swirrent.c src/bencode.c src/torrent.c src/tracker.c src/asio.c")
       vim.defer_fn(function()
         vim.notify("Build complete, starting debug...", vim.log.levels.INFO)
       end, 500)
