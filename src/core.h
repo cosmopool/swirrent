@@ -9,6 +9,11 @@
 #define IPV4_LEN 4
 #define PORT_LEN 2
 
+#define UNREACHABLE(msg)                                       \
+  fprintf(stderr,                                              \
+          "%s:%u: execution reached a UNREACHABLE line: %s\n", \
+          __FILE__, __LINE__, (msg));                          \
+  exit(52);
 #define ASSERT(expr, msg)                                         \
   if (!(expr)) {                                                  \
     fprintf(stderr,                                               \
