@@ -27,11 +27,18 @@ void asioFdUnset(i32 fd) {
 }
 
 void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
+  u32 tries = 0;
   i32 poll_count;
-  while ((poll_count = poll(pfds, num_pfds, 10000)) >= 0) {
+  while ((poll_count = poll(pfds, num_pfds, 1000)) >= 0) {
     if (poll_count == -1) {
       perror("poll");
       exit(1);
+    }
+    printf("pending pfds: %lu, ready: %d\n", num_pfds, poll_count);
+    if (poll_count == 0) {
+      if (tries > 2) return;
+      tries++;
+      continue;
     }
 
     // Run through connections looking for data to read
