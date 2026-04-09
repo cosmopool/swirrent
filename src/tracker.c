@@ -4,13 +4,17 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <endian.h>
+#else
+#include <sys/endian.h>
+#endif
 
 #define STRING_IMPLEMENTATION
 #include "asio.h"

@@ -1,6 +1,6 @@
 #include <assert.h>
+#include <poll.h>
 #include <stdbool.h>
-#include <sys/poll.h>
 #include <unistd.h>
 
 #include "asio.h"
