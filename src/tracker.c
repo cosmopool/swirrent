@@ -487,18 +487,16 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     ThreadJob job = {.id = j, .args = &metainfo->trackers_url + j, .callback = trackerResolveAddress};
     threadJobCreate(job);
   }
-  // return 0;
 
   isize remaing = metainfo->trackers_count;
   while (remaing > 0) {
     ThreadJob job = threadGetCompletedJob();
-    if (threadJobIsEmpty(job)) {
+    while (threadJobIsEmpty(job)) {
       // svcSleepThread(30 * NANOSECONDS_IN_MILLI);
       sleep(1);
-      continue;
     }
-    logInfo("\tCONNECT sent");
 
+    logInfo("\tCONNECT sent");
     i32 fd = trackerConnectionStart(trackers + job.id);
     if (fd < 0) {
       logInfo("\tCONNECT failed");
