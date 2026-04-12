@@ -55,15 +55,15 @@ APP_TITLEID := 01000050068E7000
 #---------------------------------------------------------------------------------
 ARCH	 := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
-CFLAGS += -g -O0
-CFLAGS := -ffunction-sections
+CFLAGS := -g -O0
+CFLAGS += -ffunction-sections
 CFLAGS += -Wall
 CFLAGS += -Wextra
 CFLAGS += -Werror
 CFLAGS += -Wpointer-arith
 CFLAGS += -Wcast-align
 CFLAGS += -Wunreachable-code
-CFLAGS := $(ARCH) $(DEFINES) `curl-config --cflags`
+CFLAGS += $(ARCH) $(DEFINES) `curl-config --cflags`
 CFLAGS +=	$(INCLUDE) -D__SWITCH__
 
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
