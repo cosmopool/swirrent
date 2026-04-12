@@ -128,7 +128,10 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
   if (*end == ':') {
     const char *port_start = end + 1;
     const char *port_end = strchr(port_start, '/');
-    size_t port_size = port_end ? port_end - port_start : strlen(port_start);
+    size_t port_size = strlen(port_start);
+    if (port_end) {
+      port_size = (size_t)(port_end - port_start);
+    }
     if (port_size >= port_len) port_size = port_len - 1;
     strncpy(port, port_start, port_size);
     port[port_size] = '\0';
@@ -432,6 +435,7 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
       freeTrackerState(trackers + fd);
       return;
     }
+    break;
 
   case ACTION_ANNOUNCE:
     switch (trackers[fd].status) {
@@ -457,6 +461,7 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
       freeTrackerState(trackers + fd);
       return;
     }
+    break;
 
   case ACTION_NONE:
     UNREACHABLE("there should be no unitialized tracker at this point");
@@ -635,7 +640,7 @@ cleanup:
   return result;
 }
 
-u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
+u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 peer_id[20]) {
   char handshake_buff[68] = {0};
   trackerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 

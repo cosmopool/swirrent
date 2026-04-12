@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <switch.h>
 
 #include "core.h"
@@ -6,8 +5,8 @@
 #include "threads.h"
 
 static Thread threads[MAX_THREADS] = {0};
-static u32 pending_count;
-static u32 finished_count;
+static i32 pending_count;
+static i32 finished_count;
 static ThreadJob pending[MAX_JOBS] = {0};
 static ThreadJob finished[MAX_JOBS] = {0};
 static Mutex m_pending = {0};
@@ -84,7 +83,7 @@ void threadProcessJob(void *args) {
       svcSleepThread(30 * NANOSECONDS_IN_MILLI);
     }
 
-    u32 i = 0;
+    i32 i = 0;
     if (mutexTryLock(&m_pending) == 0) continue;
     logDebug("[THREADS] %d jobs available for processing", pending_count);
     for (i = 0; i < pending_count; i++) {

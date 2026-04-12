@@ -27,7 +27,7 @@ void asioFdUnset(i32 fd) {
 }
 
 void asioUnsetAll() {
-  usize remaning = num_pfds;
+  isize remaning = num_pfds;
   for (i32 i = 0; i < MAX_FD; i++) {
     if (remaning < 0) return;
     if (pfds[i].fd <= 0) continue;
