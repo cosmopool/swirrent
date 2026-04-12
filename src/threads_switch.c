@@ -42,7 +42,7 @@ void threadJobComplete(ThreadJob job) {
   ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
   ASSERT(job.results, "to complete a job the 'results' pointer must be not null");
-  threadJobDestroy(job.id);
+  threadJobDestroy(job.idx);
   mutexLock(&m_finished);
   finished[finished_count] = job;
   finished_count++;

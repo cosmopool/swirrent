@@ -33,7 +33,7 @@ ThreadJob threadGetCompletedJob() {
   ThreadJob job = finished[finished_count];
   finished[finished_count] = (ThreadJob){0};
   pthread_mutex_unlock(&m_finished);
-  logInfo("[THREADS] fetched %d", job.id);
+  logInfo("[THREADS] fetched job (%d)", job.idx);
   logInfo("[THREADS] %d finished jobs waiting processing", finished_count);
   return job;
 }
@@ -43,7 +43,7 @@ void threadJobComplete(ThreadJob job) {
   ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
   ASSERT(job.results, "to complete a job the 'results' pointer must be not null");
-  threadJobDestroy(job.id);
+  threadJobDestroy(job.idx);
   pthread_mutex_lock(&m_finished);
   finished[finished_count] = job;
   finished_count++;
@@ -55,7 +55,7 @@ void threadJobCreate(ThreadJob job) {
   logInfo("[THREADS] creating job (%d)", job.id);
   ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
-  job.id = pending_count;
+  job.idx = pending_count;
   pthread_mutex_lock(&m_pending);
   pending[pending_count] = job;
   pending_count++;
@@ -68,6 +68,7 @@ void threadJobDestroy(u32 idx) {
   ASSERT(!pending[idx].processing, "should not destroy a task that is being processed.");
   pthread_mutex_lock(&m_pending);
   pending[idx] = pending[pending_count];
+  pending[idx].idx = idx;
   pending[pending_count] = (ThreadJob){0};
   pending_count--;
   pthread_mutex_unlock(&m_pending);
@@ -97,7 +98,7 @@ void threadProcessJob(void *args) {
       pending[i].processing = true;
       break;
     }
-    logInfo("[THREADS] processing job (%d)", i);
+    logInfo("[THREADS] processing job (%d)", pending[i].idx);
     pthread_mutex_unlock(&m_pending);
     pending[i].callback(pending[i].args, pending[i].results);
     pthread_mutex_lock(&m_pending);

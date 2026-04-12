@@ -9,9 +9,10 @@
 
 typedef struct {
   u32 id;
+  u32 idx;
   bool processing;
   // bool initialized;
-  i32 (*callback)(void *args, void *result);
+  i32 (*callback)(void *args, void **result);
   void *args;
   void *results;
 } ThreadJob;
