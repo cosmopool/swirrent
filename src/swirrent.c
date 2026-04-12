@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define STRING_IMPLEMENTATION
 #include "bencode.h"
 #include "core.h"
 #include "swirrent.h"

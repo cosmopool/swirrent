@@ -1,8 +1,8 @@
 #pragma once
 
+
 #include "core.h"
 #include "torrent.h"
-#include <sys/poll.h>
 
 #define MAX_FD 1024
 

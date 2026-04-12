@@ -11,7 +11,6 @@
 #define INET_ADDRSTRLEN 4
 #endif
 
-#define STRING_IMPLEMENTATION
 #include "core.h"
 #include "swirrent.h"
 

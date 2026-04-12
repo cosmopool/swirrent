@@ -3,7 +3,6 @@
 #include <stdbool.h>
 
 #include "bencode.h"
-#define STRING_IMPLEMENTATION
 #include "core.h"
 #include "torrent.h"
 

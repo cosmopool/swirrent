@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define NANOSECONDS_IN_MILLI 1000000
+
 #define IPV6_LEN 16
 #define IPV4_LEN 4
 #define PORT_LEN 2
@@ -69,7 +71,6 @@ typedef double f64;
 // }
 
 // ---------- String
-
 /**
  * A string structure that combines length information with character data.
  * This structure provides a safer way to handle strings by storing both
@@ -87,9 +88,6 @@ typedef struct String {
   usize len;
   const char *data;
 } String;
-
-#ifndef STRING_IMPLEMENTATION
-#define STRING_IMPLEMENTATION
 
 #include <assert.h>
 #include <string.h>
@@ -125,7 +123,6 @@ inline String mclStringNewC(const char *str) {
 static inline void mclPrintString(String str) {
   printf("%.*s", (u32)str.len, str.data);
 }
-#endif // STRING_IMPLEMENTATION
 
 // ---------- String
 
