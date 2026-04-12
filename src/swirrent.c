@@ -27,9 +27,9 @@ void swirrentShutdown(SwirrentContext *ctx) {
 
 i32 swirrentMain(SwirrentContext *ctx) {
   logSetOutputPath(ctx->options.log_output_path);
-  Result rc = {0};
+  u32 rc = {0};
   logInfo("initializing threads");
-  if (R_FAILED(threadInit())) {
+  if (threadInit() > 0) {
     logInfo("failed to init threads");
   }
   BencodeParser decoder = ctx->parser;
@@ -92,9 +92,9 @@ i32 swirrentMain(SwirrentContext *ctx) {
     if (result != 0) return result;
   }
 
-  // logInfo("deinitializing threads");
-  // if (R_FAILED(threadDeinit())) {
-  //   logInfo("failed to deinit threads");
-  // }
+  logInfo("deinitializing threads");
+  if (threadDeinit() > 0) {
+    logInfo("failed to deinit threads");
+  }
   return rc;
 }

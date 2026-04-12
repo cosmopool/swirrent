@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <switch.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
 #include <unistd.h>
@@ -243,7 +242,7 @@ i32 asdf(void *url, void *out) {
 }
 
 i32 trackerConnectionStart(TrackerState *tracker) {
-  ASSERT(tracker->addr, "the tracker address info must have bing set already");
+  ASSERT(tracker->addr, "the tracker address info must have being set already");
 
   // print ipv4 of tracker
   struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)tracker->addr->ai_addr;
@@ -485,16 +484,17 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
 
-    ThreadJob job = {.id = j, .args = (void *)&url, .callback = asdf};
+    ThreadJob job = {.id = j, .args = &metainfo->trackers_url + j, .callback = asdf};
     threadJobCreate(job);
   }
-  return 0;
+  // return 0;
 
   isize remaing = metainfo->trackers_count;
   while (remaing > 0) {
     ThreadJob job = threadGetCompletedJob();
     if (threadJobIsEmpty(job)) {
-      svcSleepThread(30 * NANOSECONDS_IN_MILLI);
+      // svcSleepThread(30 * NANOSECONDS_IN_MILLI);
+      sleep(1);
       continue;
     }
     logInfo("\tCONNECT sent");

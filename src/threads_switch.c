@@ -54,7 +54,7 @@ void threadJobCreate(ThreadJob job) {
   logInfo("[THREADS] creating job (%d)", job.id);
   ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
-  // ASSERT_VALID_FD(job.id);
+  job.id = pending_count;
   mutexLock(&m_pending);
   pending[pending_count] = job;
   pending_count++;
@@ -75,17 +75,17 @@ void threadJobDestroy(u32 idx) {
 }
 
 void threadProcessJob(void *args) {
-  logInfo("[THREADS] start processing jobs");
+  // logInfo("[THREADS] start processing jobs");
   ASSERT(args == NULL, "this function should not receive any args right now");
   while (true) {
-    logInfo("[THREADS] wating for jobs");
+    // logInfo("[THREADS] wating for jobs");
     while (pending_count == 0) {
       svcSleepThread(30 * NANOSECONDS_IN_MILLI);
     }
 
     i32 i = 0;
     if (mutexTryLock(&m_pending) == 0) continue;
-    logDebug("[THREADS] %d jobs available for processing", pending_count);
+    // logDebug("[THREADS] %d jobs available for processing", pending_count);
     for (i = 0; i < pending_count; i++) {
       if (isEmptyJob(i)) continue;
       if (pending[i].processing) continue;
@@ -93,19 +93,19 @@ void threadProcessJob(void *args) {
       pending[i].processing = true;
       break;
     }
-    logInfo("[THREADS] processing job (%d)", i);
+    // logInfo("[THREADS] processing job (%d)", i);
     mutexUnlock(&m_pending);
     pending[i].callback(pending[i].args, pending[i].results);
     mutexLock(&m_pending);
-    pending->processing = false;
+    pending[i].processing = false;
     mutexUnlock(&m_pending);
     threadJobComplete(pending[i]);
   }
 }
 
-Result threadInit() {
-  Result rc = 0;
-  u32 stack_size = 64 * 1024;
+u32 threadInit() {
+  u32 rc = 0;
+  u32 stack_size = 128 * 1024;
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = threadCreate(threads + i, threadProcessJob, NULL, NULL, stack_size, 0x3B, 2);
     if (R_FAILED(rc)) {
@@ -118,8 +118,8 @@ Result threadInit() {
   return rc;
 }
 
-Result threadDeinit() {
-  Result rc = 0;
+u32 threadDeinit() {
+  u32 rc = 0;
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = threadWaitForExit(threads + i);
     if (R_FAILED(rc)) {

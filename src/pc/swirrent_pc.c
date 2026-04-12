@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "swirrent.h"
+#include "../swirrent.h"
 
 void swirrentPrintMemoryUtilization(u64 *total, u64 *used) {
   (void)total;

@@ -1,11 +1,10 @@
 #pragma once
 
 #include <stdbool.h>
-#include <switch.h>
 
 #include "core.h"
 
-#define MAX_THREADS 16
+#define MAX_THREADS 2
 #define MAX_JOBS 1000
 
 typedef struct {
@@ -22,5 +21,5 @@ ThreadJob threadGetCompletedJob();
 void threadJobCreate(ThreadJob job);
 void threadJobDestroy(u32 idx);
 void threadProcessJob(void *args);
-Result threadInit();
-Result threadDeinit();
+u32 threadInit();
+u32 threadDeinit();
