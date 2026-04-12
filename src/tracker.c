@@ -227,14 +227,14 @@ i32 trackerAnnounceFinish(u32 fd) {
   //   return -1;
 }
 
-i32 asdf(void *url, void *out) {
+i32 trackerResolveAddress(void *url, void **out) {
   struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
   // resolve tracker ip
   char host[256], port[16];
   parse_tracker_url(*(String *)url, host, sizeof(host), port, sizeof(port));
   // TODO: turn getaddrinfo call into asynchronous because it blocks
   i32 get_addr_status;
-  if ((get_addr_status = getaddrinfo(host, port, &hints, (struct addrinfo **)&out)) != 0) {
+  if ((get_addr_status = getaddrinfo(host, port, &hints, (struct addrinfo **)out)) != 0) {
     logError("\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
     return -1;
   }
@@ -484,7 +484,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
 
-    ThreadJob job = {.id = j, .args = &metainfo->trackers_url + j, .callback = asdf};
+    ThreadJob job = {.id = j, .args = &metainfo->trackers_url + j, .callback = trackerResolveAddress};
     threadJobCreate(job);
   }
   // return 0;
