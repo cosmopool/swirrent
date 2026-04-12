@@ -5,7 +5,9 @@
 
 #include "bencode.h"
 #include "core.h"
+#include "log.h"
 #include "swirrent.h"
+#include "threads.h"
 #include "torrent.h"
 #include "tracker.h"
 
@@ -24,19 +26,26 @@ void swirrentShutdown(SwirrentContext *ctx) {
 }
 
 i32 swirrentMain(SwirrentContext *ctx) {
+  logSetOutputPath(ctx->options.log_output_path);
+  Result rc = {0};
+  logInfo("initializing threads");
+  if (R_FAILED(threadInit())) {
+    logInfo("failed to init threads");
+  }
   BencodeParser decoder = ctx->parser;
   // decode torrent file
   assert(decoder.bencode[decoder.cursor] == 'd');
   torrentMetainfoDecode(&decoder, ctx->metainfo);
   if (ctx->metainfo->trackers_count == 0) {
-    printf("trackerless torrents are not implemented yet.");
+    logInfo("trackerless torrents are not implemented yet.");
     return 1;
   }
-  torrentInfoHashGenerate(ctx->metainfo);
+  // torrentInfoHashGenerate(ctx->metainfo);
   if (ctx->options.verbose) torrentMetainfoPrint(*ctx->metainfo);
 
   String raw_request = {0};
   if (ctx->options.raw_request_path) {
+    logInfo("saving response in: %s", ctx->options.raw_request_path);
     FILE *file = fopen(ctx->options.raw_request_path, "rb");
     if (!file) {
       perror("fopen");
@@ -62,22 +71,30 @@ i32 swirrentMain(SwirrentContext *ctx) {
 
   bool was_raw_request_loaded = ctx->options.raw_request_path != 0;
   if (was_raw_request_loaded) {
+    logInfo("loading response dump");
     // raw request was load, so we jsut decode it to access the peer list
     TorrentTrackerResponse resp = {0};
     i32 result = torrentResponseDecode(&raw_request, &resp);
-    printf("finished decoding tracker response, result: %d\n", result);
+    logInfo("finished decoding tracker response, result: %d", result);
     if (result != 0) return result;
 
+    logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
     result = trackerPeer6Handshake(&resp, ctx->metainfo->info_hash, peer_id);
-    printf("finished generating peer handshake, result: %d\n", result);
+    logInfo("finished generating peer handshake, result: %d", result);
     if (result != 0) return result;
   } else {
+    logInfo("no dump response. starting fresh.");
+    logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
     // no raw request was load, so we will talk to trackers for peers
     TorrentTrackerResponse resp = {0};
     i32 result = trackerPeerListFetch(ctx->metainfo, &resp, peer_id);
-    printf("finish fetching peer list, result: %d\n", result);
+    logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
   }
 
-  return 0;
+  // logInfo("deinitializing threads");
+  // if (R_FAILED(threadDeinit())) {
+  //   logInfo("failed to deinit threads");
+  // }
+  return rc;
 }

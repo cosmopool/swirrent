@@ -13,6 +13,7 @@ typedef struct {
   char *torrent_path;
   char *raw_request_path;
   char *raw_request_output_path;
+  char *log_output_path;
 } SwirrentOptions;
 
 typedef struct {
@@ -24,3 +25,4 @@ typedef struct {
 SwirrentContext swirrentInit(SwirrentOptions);
 i32 swirrentMain(SwirrentContext *);
 void swirrentShutdown(SwirrentContext *);
+void swirrentPrintMemoryUtilization(u64 *total, u64 *used);

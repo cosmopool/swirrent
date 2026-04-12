@@ -1,6 +1,12 @@
+#include <stdio.h>
 #include <string.h>
 
 #include "swirrent.h"
+
+void swirrentPrintMemoryUtilization(u64 *total, u64 *used) {
+  (void)total;
+  (void)used;
+}
 
 i32 main(i32 argc, char *argv[]) {
   SwirrentOptions options = {0};

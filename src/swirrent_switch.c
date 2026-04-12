@@ -14,6 +14,12 @@
 #include "core.h"
 #include "swirrent.h"
 
+void swirrentPrintMemoryUtilization(u64 *total, u64 *used) {
+  svcGetInfo(total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+  svcGetInfo(used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
+  printf("total: %llu | used: %llu\n", *total / 1024, *used / 1024);
+}
+
 int main() {
   // switch basic init
   consoleInit(NULL);
@@ -29,6 +35,7 @@ int main() {
   SwirrentOptions options = {
       .verbose = true,
       .torrent_path = "/torrents/e.torrent",
+      .log_output_path = "/torrents/log.txt",
   };
   SwirrentContext ctx = swirrentInit(options);
 
