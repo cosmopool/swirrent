@@ -1,0 +1,61 @@
+#include <stdarg.h>
+#include <stdio.h>
+#include <time.h>
+
+static FILE *logFile = NULL;
+
+void logSetOutputPath(const char *path) {
+  if (logFile) fclose(logFile);
+  logFile = fopen(path, "a");
+  if (logFile) {
+    setvbuf(logFile, NULL, _IONBF, 0);
+  } else {
+    perror("fopen");
+  }
+}
+
+void logClose(void) {
+  if (!logFile) return;
+  fclose(logFile);
+  logFile = NULL;
+}
+
+static void logWrite(const char *prefix, FILE *stream, const char *fmt, va_list args) {
+  // Print to file with timestamp
+  if (logFile) {
+    fprintf(logFile, "[%ld] %s", time(NULL), prefix);
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    vfprintf(logFile, fmt, argsCopy);
+    va_end(argsCopy);
+    fprintf(logFile, "\n");
+    fflush(logFile);
+  }
+
+  // Print to stdout/stderr
+  fprintf(stream, "%s", prefix);
+  vfprintf(stream, fmt, args);
+  fprintf(stream, "\n");
+  fflush(stream);
+}
+
+void logInfo(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  logWrite("", stdout, fmt, args);
+  va_end(args);
+}
+
+void logError(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  logWrite("[ERRROR] ", stderr, fmt, args);
+  va_end(args);
+}
+
+void logDebug(const char *fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  logWrite("[DEBUG] ", stdout, fmt, args);
+  va_end(args);
+}
