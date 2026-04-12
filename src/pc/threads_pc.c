@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <sys/unistd.h>
+#include <unistd.h>
 
 #include "../core.h"
 #include "../log.h"
@@ -28,6 +29,10 @@ ThreadJob threadGetCompletedJob() {
   // ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   // ASSERT(job.callback, "a job must have a callback");
   // ASSERT(job.results, "to complete a job the 'results' pointer must be not null");
+  if (finished_count <= 0) {
+    logInfo("[THREADS] no completed job available. empty queue");
+    return (ThreadJob){0};
+  }
   pthread_mutex_lock(&m_finished);
   finished_count--;
   ThreadJob job = finished[finished_count];
