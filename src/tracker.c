@@ -27,6 +27,7 @@
 #define PORT "6666"
 
 static TrackerState trackers[MAX_FD] = {0};
+static i32 fd_to_tracker[MAX_FD] = {0};
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
 
@@ -140,16 +141,17 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
 }
 
 i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20]) {
+  i32 tracker_idx = fd_to_tracker[fd];
   TorrentTracker tracker = {
-      .connection_id = trackers[fd].connection_id,
+      .connection_id = trackers[tracker_idx].connection_id,
       .event = TRACKER_EVENT_NONE,
-      .port = trackers[fd].port,
+      .port = trackers[tracker_idx].port,
   };
 
-  trackers[fd].action = ACTION_ANNOUNCE;
+  trackers[tracker_idx].action = ACTION_ANNOUNCE;
   TrackerAnnounceRequest request = {
-      .connection_id = htobe64(trackers[fd].connection_id),
-      .action = htobe32(trackers[fd].action),
+      .connection_id = htobe64(trackers[tracker_idx].connection_id),
+      .action = htobe32(trackers[tracker_idx].action),
       .transaction_id = htobe32((u32)rand()),
       .downloaded = htobe64(tracker.downloaded),
       .left = htobe64(tracker.left),
@@ -158,13 +160,13 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20]) {
       .ip = htobe32(0),
       .key = htobe32(0),
       .num_want = htobe32(-1),
-      .port = htobe16(trackers[fd].port),
+      .port = htobe16(trackers[tracker_idx].port),
   };
   memcpy(request.info_hash, info_hash, 20);
   memcpy(request.peer_id, peer_id, 20);
-  trackers[fd].transaction_id = be32toh(request.transaction_id);
+  trackers[tracker_idx].transaction_id = be32toh(request.transaction_id);
 
-  if (sendto(fd, &request, ANNOUNCE_SIZE, 0, trackers[fd].addr->ai_addr, trackers[fd].addr->ai_addrlen) < 0) {
+  if (sendto(fd, &request, ANNOUNCE_SIZE, 0, trackers[tracker_idx].addr->ai_addr, trackers[tracker_idx].addr->ai_addrlen) < 0) {
     logError("\tfailed to send announce to tracker: %s\n", strerror(errno));
     return -1;
   }
@@ -201,7 +203,8 @@ i32 trackerAnnounceFinish(u32 fd) {
     logError("\ttracker(%d) announce response: invalid tracker announce response: wrong action\n", fd);
     return -1;
   }
-  if (be32toh(response->transaction_id) != trackers[fd].transaction_id) {
+  i32 tracker_idx = fd_to_tracker[fd];
+  if (be32toh(response->transaction_id) != trackers[tracker_idx].transaction_id) {
     logError("\ttracker(%d) announce response: invalid tracker announce response: wrong transaction id\n", fd);
     return -1;
   }
@@ -323,17 +326,18 @@ i32 trackerConnectionFinish(i32 fd) {
     logError("\ttracker (%d) connect response: wrong length (%ld)\n", fd, bytes_read);
     return -1;
   }
+  i32 tracker_idx = fd_to_tracker[fd];
   // check tracker connect response
-  if (be32toh(response->transaction_id) != trackers[fd].transaction_id) {
-    logError("\ttracker (%d) connect response: invalid transaction_id in response!\n", fd);
+  if (be32toh(response->transaction_id) != trackers[tracker_idx].transaction_id) {
+    logError("\ttracker (%d) connect response: invalid transaction_id in response!\n", tracker_idx);
     return -1;
   }
-  if (be32toh(response->action) != trackers[fd].action) {
-    logError("\ttracker (%d) connect response: action in response!\n", fd);
+  if (be32toh(response->action) != trackers[tracker_idx].action) {
+    logError("\ttracker (%d) connect response: action in response!\n", tracker_idx);
     return -1;
   }
-  trackers[fd].connection_id = be64toh(response->connection_id);
-  logInfo("\ttracker (%d): successfully connected with id: %llu", trackers[fd].id, trackers[fd].connection_id);
+  trackers[tracker_idx].connection_id = be64toh(response->connection_id);
+  logInfo("\ttracker (%d): successfully connected with id: %llu", trackers[tracker_idx].id, trackers[tracker_idx].connection_id);
   return 0;
 }
 
@@ -565,18 +569,19 @@ void freeTrackerState(TrackerState *t) {
 void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
   TorrentMetainfo *metainfo = m;
 
-  logInfo("===| tracker (%d)", trackers[fd].id);
-  switch (trackers[fd].action) {
+  i32 tracker_idx = fd_to_tracker[fd];
+  logInfo("===| tracker (%d)", trackers[tracker_idx].id);
+  switch (trackers[tracker_idx].action) {
   case ACTION_CONNECT:
-    switch (trackers[fd].status) {
+    switch (trackers[tracker_idx].status) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
       logInfo("\tCONNECT decoding response");
       if (trackerConnectionFinish(fd) < 0) {
-        trackers[fd].status = STATUS_FAILED;
+        trackers[tracker_idx].status = STATUS_FAILED;
       } else {
-        trackers[fd].status = STATUS_SUCCEED;
+        trackers[tracker_idx].status = STATUS_SUCCEED;
       }
       trackerStateResolver(fd, m, peer_id);
       return;
@@ -584,42 +589,42 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
       logInfo("\tCONNECT succeed");
       logInfo("\tANNOUNCE sent");
       if (trackerAnnounceStart(metainfo->info_hash, fd, peer_id) < 0) {
-        trackers[fd].status = STATUS_FAILED;
+        trackers[tracker_idx].status = STATUS_FAILED;
         trackerStateResolver(fd, m, peer_id);
       } else {
-        trackers[fd].status = STATUS_SENT;
+        trackers[tracker_idx].status = STATUS_SENT;
       }
       return;
     case STATUS_FAILED:
       logInfo("\tCONNECT failed");
       asioFdUnset(fd);
-      freeTrackerState(trackers + fd);
+      freeTrackerState(trackers + tracker_idx);
       return;
     }
     break;
 
   case ACTION_ANNOUNCE:
-    switch (trackers[fd].status) {
+    switch (trackers[tracker_idx].status) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
       logInfo("\tANNOUNCE decoding response");
       if (trackerAnnounceFinish(fd) < 0) {
-        trackers[fd].status = STATUS_FAILED;
+        trackers[tracker_idx].status = STATUS_FAILED;
       } else {
-        trackers[fd].status = STATUS_SUCCEED;
+        trackers[tracker_idx].status = STATUS_SUCCEED;
       }
       trackerStateResolver(fd, m, peer_id);
       return;
     case STATUS_SUCCEED:
       logInfo("\tANNOUNCE succeed");
       asioFdUnset(fd);
-      freeTrackerState(trackers + fd);
+      freeTrackerState(trackers + tracker_idx);
       return;
     case STATUS_FAILED:
       logInfo("\tANNOUNCE failed");
       asioFdUnset(fd);
-      freeTrackerState(trackers + fd);
+      freeTrackerState(trackers + tracker_idx);
       return;
     }
     break;
@@ -666,24 +671,25 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
       ASSERT(remaining == 0, "all trackers should have being processed by now");
       break;
     }
+
+    remaining--;
     if (job.result_code != 0) {
-      remaining--;
       logInfo("not able to resolve tracker (%d) address. failed with error: %d", job.tracker_id, job.result_code);
       continue;
     }
     ASSERT(!threadJobIsZero(job), "an empty job is invalid here");
     ASSERT(job.results, "the tracker addrs should be resolved by now");
+    trackers[job.tracker_id].id = job.tracker_id;
     trackers[job.tracker_id].addr = job.results;
     logInfo("\tCONNECT sent");
     i32 fd = trackerConnectionStart(trackers + job.tracker_id);
     if (fd < 0) {
       logInfo("\tCONNECT failed");
       freeTrackerState(trackers + job.tracker_id);
-      remaining--;
       continue;
     }
+    fd_to_tracker[fd] = job.tracker_id;
     asioFdSet((AsioFd){.fd = fd, .on_ready_callback = trackerStateResolver});
-    remaining--;
   }
 
   asioWaitForEvents(metainfo, peer_id);
