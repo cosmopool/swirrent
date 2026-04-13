@@ -2,6 +2,7 @@
 
 #include "core.h"
 #include "log.h"
+#include "switch/kernel/thread.h"
 #include "threads.h"
 
 static Thread threads[MAX_THREADS] = {0};
@@ -115,7 +116,21 @@ void workerLoop(void *args) {
   }
 }
 
-u32 threadDeinit() {
+u32 threadsPoolInit() {
+  u32 rc = 0;
+  u32 stack_size = 64 * 1024;
+  for (u32 i = 0; i < MAX_THREADS; i++) {
+    rc = threadCreate(threads + i, workerLoop, NULL, NULL, stack_size, 10, 2);
+    if (rc > 0) {
+      logInfo("[THREADS] [init] threadCreate failed: %d", rc);
+      return rc;
+    }
+    threadStart(threads + i);
+  }
+  return rc;
+}
+
+u32 threadsPoolDeinit() {
   u32 rc = 0;
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = threadWaitForExit(threads + i);
