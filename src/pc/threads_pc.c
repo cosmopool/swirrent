@@ -25,7 +25,6 @@ bool threadJobIsEmpty(ThreadJob job) {
   pthread_mutex_lock(&m_finished);
   bool is_empty = job.idx == 0 &&
                   job.tracker_id == 0 &&
-                  // job.processing == false &&
                   !job.callback &&
                   !job.args &&
                   !job.results &&
@@ -54,7 +53,6 @@ ThreadJob threadJobGetCompleted() {
   }
   finished_count--;
   ThreadJob job = finished[finished_count];
-  // ASSERT(!job.processing, "a job should have finished processing");
   ASSERT(job.callback, "a job must have a callback");
   ASSERT(job.results, " completed job should have results");
   finished[finished_count] = (ThreadJob){0};
@@ -72,7 +70,6 @@ void threadJobComplete(ThreadJob job) {
 
   pthread_mutex_lock(&m_finished);
   logInfo("[THREADS] [complete] completing job (%d)", job.tracker_id);
-  // ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
   ASSERT(job.results || job.result_code != 0, "to complete a job must have 'results' or an error 'result_code'");
   finished[finished_count] = job;
@@ -87,7 +84,6 @@ void threadJobComplete(ThreadJob job) {
 void threadJobCreate(ThreadJob job) {
   pthread_mutex_lock(&m_pending);
   logInfo("[THREADS] [create] creating job (%d)", job.tracker_id);
-  // ASSERT(!job.processing, "a job cannot start with 'processing == true'. the thread that controls this value");
   ASSERT(job.callback, "a job must have a callback");
   job.idx = pending_count;
   pending[pending_count] = job;
@@ -100,7 +96,6 @@ void threadJobCreate(ThreadJob job) {
 void threadJobDestroy(u32 idx) {
   pthread_mutex_lock(&m_pending);
   logInfo("[THREADS] [destroy] destroying job (%d)", idx);
-  // ASSERT(!pending[idx].processing, "should not destroy a task that is being processed.");
   pending_count--;
   pending[idx] = pending[pending_count];
   pending[idx].idx = idx;
@@ -126,7 +121,6 @@ void threadProcessJob(void *args) {
     ThreadJob job = {0};
     for (i = 0; i < pending_count; i++) {
       if (threadJobIsEmpty(pending[i])) continue;
-      // if (pending[i].processing) continue;
       job = threadJobStartProcessing(i);
       ASSERT(job.callback != NULL, "all jobs should be initialized and callbacks assigned");
       break;
@@ -135,9 +129,6 @@ void threadProcessJob(void *args) {
     logInfo("[THREADS] [process] processing job (%d)", i);
     pthread_mutex_unlock(&m_pending);
     job.result_code = job.callback(job.args, &job.results);
-    // pthread_mutex_lock(&m_pending);
-    // threadJobFinishProcessing(job, i);
-    // pthread_mutex_unlock(&m_pending);
     threadJobComplete(job);
   }
 }
@@ -150,7 +141,6 @@ u32 threadInit() {
       logInfo("[THREADS] [init] threadCreate failed: %d", rc);
       return rc;
     }
-    // logInfo("[THREADS] starting thread (%d): %d", i, threads[i].handle);
   }
   return rc;
 }
