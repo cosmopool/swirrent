@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdbool.h>
+
+void logInit(bool enabled);
 void logSetOutputPath(const char *path);
 void logClose(void);
 
