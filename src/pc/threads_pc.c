@@ -97,14 +97,14 @@ void workerLoop(void *args) {
   logInfo("[THREADS] [process] start processing jobs");
   ASSERT(args == NULL, "this function should not receive any args right now");
   while (true) {
-    logInfo("[THREADS] [process] wating for jobs");
+    // logInfo("[THREADS] [process] wating for jobs");
     while (pending_count == 0) {
       struct timespec remaining, request = {5, 300 * NANOSECONDS_IN_MILLI};
       nanosleep(&request, &remaining);
     }
 
     u32 i = 0;
-    if (pthread_mutex_lock(&m_pending) == 0) continue;
+    pthread_mutex_lock(&m_pending);
     logDebug("[THREADS] [process] %d jobs available for processing", pending_count);
     ThreadJob job = {0};
     for (i = 0; i < pending_count; i++) {

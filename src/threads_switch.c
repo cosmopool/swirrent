@@ -94,13 +94,12 @@ void workerLoop(void *args) {
   logInfo("[THREADS] [process] start processing jobs");
   ASSERT(args == NULL, "this function should not receive any args right now");
   while (true) {
-    logInfo("[THREADS] [process] wating for jobs");
     while (pending_count == 0) {
       svcSleepThread(30 * NANOSECONDS_IN_MILLI);
     }
 
     u32 i = 0;
-    if (mutexTryLock(&m_pending) == 0) continue;
+    mutexLock(&m_pending);
     logDebug("[THREADS] [process] %d jobs available for processing", pending_count);
     ThreadJob job = {0};
     for (i = 0; i < pending_count; i++) {
