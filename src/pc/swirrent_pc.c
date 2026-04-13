@@ -57,6 +57,7 @@ i32 main(i32 argc, char *argv[]) {
 
     else if (strncmp(argv[i], "-v", 2) == 0 || strncmp(argv[i], "--verbose", 9) == 0) {
       options.verbose = true;
+      options.log_enabled = true;
       continue;
     }
   }

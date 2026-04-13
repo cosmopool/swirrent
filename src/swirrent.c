@@ -26,6 +26,7 @@ void swirrentShutdown(SwirrentContext *ctx) {
 }
 
 i32 swirrentMain(SwirrentContext *ctx) {
+  logInit(ctx->options.log_enabled);
   logSetOutputPath(ctx->options.log_output_path);
   logInfo("initializing threads");
   if (threadsPoolInit() > 0) {

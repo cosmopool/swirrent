@@ -10,6 +10,7 @@ typedef struct {
   bool verbose;
   bool decode_only;
   bool dump_response;
+  bool log_enabled;
   char *torrent_path;
   char *raw_request_path;
   char *raw_request_output_path;

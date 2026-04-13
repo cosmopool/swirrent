@@ -34,6 +34,7 @@ int main() {
 
   SwirrentOptions options = {
       .verbose = true,
+      .log_enabled = true,
       .torrent_path = "/torrents/e.torrent",
       .log_output_path = "/torrents/log.txt",
   };
