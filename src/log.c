@@ -49,7 +49,7 @@ void logInfo(const char *fmt, ...) {
 void logError(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  logWrite("[ERRROR] ", stderr, fmt, args);
+  logWrite("[ERROR] ", stderr, fmt, args);
   va_end(args);
 }
 
