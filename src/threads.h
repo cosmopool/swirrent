@@ -8,17 +8,17 @@
 #define MAX_JOBS 1000
 
 typedef struct {
-  u32 id;
+  u32 tracker_id;
   u32 idx;
-  bool processing;
-  // bool initialized;
   i32 (*callback)(void *args, void **result);
   void *args;
   void *results;
+  u32 result_code;
 } ThreadJob;
 
+bool threadHasPendingJobs();
 bool threadJobIsEmpty(ThreadJob);
-ThreadJob threadGetCompletedJob();
+ThreadJob threadJobGetCompleted();
 void threadJobCreate(ThreadJob job);
 void threadJobDestroy(u32 idx);
 void threadProcessJob(void *args);

@@ -229,15 +229,20 @@ i32 trackerAnnounceFinish(u32 fd) {
 
 i32 trackerResolveAddress(void *url, void **out) {
   struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
-  // resolve tracker ip
   char host[256], port[16];
   parse_tracker_url(*(String *)url, host, sizeof(host), port, sizeof(port));
-  // TODO: turn getaddrinfo call into asynchronous because it blocks
   i32 get_addr_status;
   if ((get_addr_status = getaddrinfo(host, port, &hints, (struct addrinfo **)out)) != 0) {
     logError("\tgetaddrinfo: %s\n", gai_strerror(get_addr_status));
     return -1;
   }
+
+  String *s = url;
+  struct addrinfo *addr = *out;
+  struct sockaddr_in *ipv4 = (struct sockaddr_in *)(void *)addr->ai_addr;
+  char ip[INET_ADDRSTRLEN];
+  inet_ntop(AF_INET, &ipv4->sin_addr, ip, sizeof(ip));
+  logInfo("tracker url: %.*s | ip: %s", (u32)s->len, s->data, ip);
   return 0;
 }
 
@@ -478,35 +483,50 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
   //   return 1;
   // }
 
+  isize remaining = 0;
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
     String url = metainfo->trackers_url[j];
     logInfo("\n===| tracker (%d) url: %.*s", j, (u32)url.len, url.data);
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
 
-    ThreadJob job = {.id = j, .args = &metainfo->trackers_url + j, .callback = trackerResolveAddress};
+    remaining++;
+    ThreadJob job = {.tracker_id = j, .args = metainfo->trackers_url + j, .callback = trackerResolveAddress};
     threadJobCreate(job);
   }
 
-  isize remaing = metainfo->trackers_count;
-  while (remaing > 0) {
-    ThreadJob job = threadGetCompletedJob();
-    while (threadJobIsEmpty(job)) {
-      // svcSleepThread(30 * NANOSECONDS_IN_MILLI);
-      sleep(1);
+  while (remaining > 0) {
+    ThreadJob job = {0};
+    bool has_pending_jobs = false;
+    while ((has_pending_jobs = threadHasPendingJobs())) {
+      job = threadJobGetCompleted();
+      if (!threadJobIsEmpty(job)) break;
+      struct timespec remaining_t, request_t = {5, 30 * NANOSECONDS_IN_MILLI};
+      nanosleep(&request_t, &remaining_t);
+    }
+    if (!has_pending_jobs) {
+      ASSERT(threadJobIsEmpty(job), "finalized queue should be empty when pending is 0");
+      break;
+    }
+    if (job.result_code != 0) {
+      threadJobDestroy(job.idx);
+      remaining--;
+      continue;
     }
 
+    ASSERT(!threadJobIsEmpty(job), "an empty job is invalid here");
+    ASSERT(job.results, "the tracker addrs should be resolved by now");
+    trackers[job.tracker_id].addr = job.results;
     logInfo("\tCONNECT sent");
-    i32 fd = trackerConnectionStart(trackers + job.id);
+    i32 fd = trackerConnectionStart(trackers + job.tracker_id);
     if (fd < 0) {
       logInfo("\tCONNECT failed");
-      freeTrackerState(trackers + job.id);
-      remaing--;
+      freeTrackerState(trackers + job.tracker_id);
+      remaining--;
       continue;
     }
     asioFdSet((AsioFd){.fd = fd, .on_ready_callback = trackerStateResolver});
-
-    remaing--;
+    remaining--;
   }
 
   asioWaitForEvents(metainfo, peer_id);
