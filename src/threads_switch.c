@@ -33,7 +33,6 @@ ThreadJob _threadsjobClaimFromPending(u32 idx) {
   ThreadJob job = pending[idx];
   processing_count++;
   pending_count--;
-  ASSERT(pending_count >= 0, "job count cannot be negative");
   pending[idx] = pending[pending_count];
   pending[idx].idx = idx;
   pending[pending_count] = (ThreadJob){0};
