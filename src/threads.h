@@ -4,7 +4,7 @@
 
 #include "core.h"
 
-#define MAX_THREADS 2
+#define MAX_THREADS 32
 #define MAX_JOBS 1000
 
 typedef struct {
@@ -16,11 +16,9 @@ typedef struct {
   u32 result_code;
 } ThreadJob;
 
-bool threadHasPendingJobs();
-bool threadJobIsEmpty(ThreadJob);
-ThreadJob threadJobGetCompleted();
-void threadJobCreate(ThreadJob job);
-void threadJobDestroy(u32 idx);
-void threadProcessJob(void *args);
-u32 threadInit();
-u32 threadDeinit();
+bool threadPoolHasWork();
+bool threadJobIsZero(ThreadJob);
+ThreadJob threadJobDequeue();
+void threadJobEnqueue(ThreadJob job);
+u32 threadPoolInit();
+u32 threadPoolDeinit();
