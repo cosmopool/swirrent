@@ -97,7 +97,6 @@ void workerLoop(void *args) {
     while (pending_count == 0) {
       svcSleepThread(30 * NANOSECONDS_IN_MILLI);
     }
-
     u32 i = 0;
     mutexLock(&m_pending);
     logDebug("[THREADS] [process] %d jobs available for processing", pending_count);
@@ -117,15 +116,20 @@ void workerLoop(void *args) {
 }
 
 u32 threadsPoolInit() {
-  u32 rc = 0;
+  Result rc = 0;
   u32 stack_size = 64 * 1024;
   for (u32 i = 0; i < MAX_THREADS; i++) {
-    rc = threadCreate(threads + i, workerLoop, NULL, NULL, stack_size, 10, 2);
-    if (rc > 0) {
-      logInfo("[THREADS] [init] threadCreate failed: %d", rc);
+    rc = threadCreate(threads + i, workerLoop, NULL, NULL, stack_size, 0x3B, 2);
+    if (R_FAILED(rc)) {
+      logInfo("[THREADS] [init] create thread failed: 0x%x (module=%u, desc=%u)", R_VALUE(rc), R_MODULE(rc), R_DESCRIPTION(rc));
       return rc;
     }
-    threadStart(threads + i);
+    logInfo("[THREADS] [init] starting thread (%d): %d", i, threads[i].handle);
+    rc = threadStart(threads + i);
+    if (R_FAILED(rc)) {
+      logInfo("[THREADS] [init] start thread failed: 0x%x (module=%u, desc=%u)", R_VALUE(rc), R_MODULE(rc), R_DESCRIPTION(rc));
+      return rc;
+    }
   }
   return rc;
 }
@@ -135,7 +139,7 @@ u32 threadsPoolDeinit() {
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = threadWaitForExit(threads + i);
     if (R_FAILED(rc)) {
-      logInfo("[THREADS] threadWaitForExit failed: 0x%x (module=%u, desc=%u)", R_VALUE(rc), R_MODULE(rc), R_DESCRIPTION(rc));
+      logInfo("[THREADS]  [deinit] failed: 0x%x (module=%u, desc=%u)", R_VALUE(rc), R_MODULE(rc), R_DESCRIPTION(rc));
       return rc;
     }
   }
