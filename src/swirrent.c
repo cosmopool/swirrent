@@ -28,7 +28,7 @@ void swirrentShutdown(SwirrentContext *ctx) {
 i32 swirrentMain(SwirrentContext *ctx) {
   logSetOutputPath(ctx->options.log_output_path);
   logInfo("initializing threads");
-  if (threadPoolInit() > 0) {
+  if (threadsPoolInit() > 0) {
     logInfo("failed to init threads");
   }
   BencodeParser decoder = ctx->parser;
@@ -92,7 +92,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
   }
 
   logInfo("deinitializing threads");
-  if (threadPoolDeinit() > 0) {
+  if (threadsPoolDeinit() > 0) {
     logInfo("failed to deinit threads");
   }
   return 0;

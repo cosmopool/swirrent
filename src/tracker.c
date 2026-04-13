@@ -654,30 +654,30 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
 
     remaining++;
     ThreadJob job = {.tracker_id = j, .args = metainfo->trackers_url + j, .callback = trackerResolveAddress};
-    threadJobEnqueue(job);
+    threadsJobEnqueue(job);
   }
 
   while (remaining > 0) {
     ThreadJob job = {0};
     bool has_pending_jobs = false;
-    while ((has_pending_jobs = threadPoolHasWork())) {
-      job = threadJobDequeue();
-      if (!threadJobIsZero(job)) break;
+    while ((has_pending_jobs = threadsPoolHasWork())) {
+      job = threadsJobTakeFinished();
+      if (!threadsJobIsEmpty(job)) break;
       struct timespec remaining_t, request_t = {5, 30 * NANOSECONDS_IN_MILLI};
       nanosleep(&request_t, &remaining_t);
     }
     if (!has_pending_jobs) {
-      ASSERT(threadJobIsZero(job), "finalized queue should be empty when pending is 0");
+      ASSERT(threadsJobIsEmpty(job), "finalized queue should be empty when pending is 0");
       ASSERT(remaining == 0, "all trackers should have being processed by now");
       break;
     }
 
     remaining--;
-    if (job.result_code != 0) {
-      logInfo("not able to resolve tracker (%d) address. failed with error: %d", job.tracker_id, job.result_code);
+    if (job.error != 0) {
+      logInfo("not able to resolve tracker (%d) address. failed with error: %d", job.tracker_id, job.error);
       continue;
     }
-    ASSERT(!threadJobIsZero(job), "an empty job is invalid here");
+    ASSERT(!threadsJobIsEmpty(job), "an empty job is invalid here");
     ASSERT(job.results, "the tracker addrs should be resolved by now");
     trackers[job.tracker_id].id = job.tracker_id;
     trackers[job.tracker_id].addr = job.results;

@@ -17,22 +17,22 @@ static pthread_mutex_t m_pending = {0};
 static pthread_mutex_t m_finished = {0};
 static pthread_mutex_t m_processing = {0};
 
-bool threadPoolHasWork() {
+bool threadsPoolHasWork() {
   return pending_count > 0 || processing_count > 0 || finished_count > 0;
 }
 
-bool threadJobIsZero(ThreadJob job) {
+bool threadsJobIsEmpty(ThreadJob job) {
   bool is_zero = job.idx == 0 &&
                  job.tracker_id == 0 &&
                  !job.callback &&
                  !job.args &&
                  !job.results &&
-                 job.result_code == 0;
+                 job.error == 0;
   return is_zero;
 }
 
-ThreadJob jobMoveToProcesing(u32 idx) {
-  pthread_mutex_unlock(&m_processing);
+ThreadJob _threadsjobClaimFromPending(u32 idx) {
+  pthread_mutex_lock(&m_processing);
   ThreadJob job = pending[idx];
   processing_count++;
   pending_count--;
@@ -44,7 +44,7 @@ ThreadJob jobMoveToProcesing(u32 idx) {
   return job;
 }
 
-ThreadJob threadJobDequeue() {
+ThreadJob threadsJobTakeFinished() {
   pthread_mutex_lock(&m_finished);
   logInfo("[THREADS] [getcomplete] fetching completed job");
   if (finished_count <= 0) {
@@ -55,7 +55,7 @@ ThreadJob threadJobDequeue() {
   finished_count--;
   ThreadJob job = finished[finished_count];
   ASSERT(job.callback, "a job must have a callback");
-  ASSERT(job.results || job.result_code != 0, "a completed job should have results");
+  ASSERT(job.results || job.error != 0, "a completed job should have results");
   finished[finished_count] = (ThreadJob){0};
   logInfo("[THREADS] [getcomplete] fetched job (%d)", job.idx);
   logInfo("[THREADS] [getcomplete] finished: %d | pending: %d | processing: %d", finished_count, pending_count, processing_count);
@@ -63,16 +63,16 @@ ThreadJob threadJobDequeue() {
   return job;
 }
 
-void threadJobComplete(ThreadJob job) {
+void threadsJobMoveToFinished(ThreadJob job) {
   pthread_mutex_lock(&m_processing);
   ASSERT(processing_count > 0, "must exist jobs being processed");
   processing_count--;
-  pthread_mutex_lock(&m_processing);
+  pthread_mutex_unlock(&m_processing);
 
   pthread_mutex_lock(&m_finished);
   logInfo("[THREADS] [complete] completing job (%d)", job.tracker_id);
   ASSERT(job.callback, "a job must have a callback");
-  ASSERT(job.results || job.result_code != 0, "to complete a job must have 'results' or an error 'result_code'");
+  ASSERT(job.results || job.error != 0, "to complete a job must have 'results' or an error 'result_code'");
   finished[finished_count] = job;
   job.idx = finished_count;
   finished_count++;
@@ -81,7 +81,7 @@ void threadJobComplete(ThreadJob job) {
   pthread_mutex_unlock(&m_finished);
 }
 
-void threadJobEnqueue(ThreadJob job) {
+void threadsJobEnqueue(ThreadJob job) {
   pthread_mutex_lock(&m_pending);
   logInfo("[THREADS] [create] creating job (%d)", job.tracker_id);
   ASSERT(job.callback, "a job must have a callback");
@@ -108,20 +108,20 @@ void workerLoop(void *args) {
     logDebug("[THREADS] [process] %d jobs available for processing", pending_count);
     ThreadJob job = {0};
     for (i = 0; i < pending_count; i++) {
-      if (threadJobIsZero(pending[i])) continue;
-      job = jobMoveToProcesing(i);
+      if (threadsJobIsEmpty(pending[i])) continue;
+      job = _threadsjobClaimFromPending(i);
       ASSERT(job.callback != NULL, "all initialized jobs should have callbacks assigned");
       break;
     }
-    if (threadJobIsZero(job)) continue;
+    if (threadsJobIsEmpty(job)) continue;
     logInfo("[THREADS] [process] processing job (%d)", i);
     pthread_mutex_unlock(&m_pending);
-    job.result_code = job.callback(job.args, &job.results);
-    threadJobComplete(job);
+    job.error = job.callback(job.args, &job.results);
+    threadsJobMoveToFinished(job);
   }
 }
 
-u32 threadPoolInit() {
+u32 threadsPoolInit() {
   u32 rc = 0;
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = pthread_create(threads + i, NULL, (void *)workerLoop, NULL);
@@ -133,7 +133,7 @@ u32 threadPoolInit() {
   return rc;
 }
 
-u32 threadPoolDeinit() {
+u32 threadsPoolDeinit() {
   u32 rc = 0;
   for (u32 i = 0; i < MAX_THREADS; i++) {
     rc = pthread_cancel(threads[i]);

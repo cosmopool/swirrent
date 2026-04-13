@@ -13,12 +13,12 @@ typedef struct {
   i32 (*callback)(void *args, void **result);
   void *args;
   void *results;
-  u32 result_code;
+  u32 error;
 } ThreadJob;
 
-bool threadPoolHasWork();
-bool threadJobIsZero(ThreadJob);
-ThreadJob threadJobDequeue();
-void threadJobEnqueue(ThreadJob job);
-u32 threadPoolInit();
-u32 threadPoolDeinit();
+bool threadsPoolHasWork();
+bool threadsJobIsEmpty(ThreadJob);
+ThreadJob threadsJobTakeFinished();
+void threadsJobEnqueue(ThreadJob job);
+u32 threadsPoolInit();
+u32 threadsPoolDeinit();
