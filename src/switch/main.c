@@ -11,8 +11,8 @@
 #define INET_ADDRSTRLEN 4
 #endif
 
-#include "core.h"
-#include "swirrent.h"
+#include "../core.h"
+#include "../swirrent.h"
 
 void swirrentPrintMemoryUtilization(u64 *total, u64 *used) {
   svcGetInfo(total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);

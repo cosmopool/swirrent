@@ -1,9 +1,8 @@
 #include <switch.h>
 
-#include "core.h"
-#include "log.h"
-#include "switch/kernel/thread.h"
-#include "threads.h"
+#include "../core.h"
+#include "../log.h"
+#include "../threads.h"
 
 static Thread threads[MAX_THREADS] = {0};
 static u32 pending_count;
