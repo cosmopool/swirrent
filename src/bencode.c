@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +39,7 @@ BencodeParser bencodeParserFromFile(const char *path) {
   char *content = (char *)malloc(length * sizeof(char));
   assert(fread(content, length, 1, file) > 0);
   fclose(file);
-  printf("FILE SIZE: %luK\n", length / 1024);
+  printf("FILE SIZE: %" PRIu64 "K\n", length / 1024);
 
   return bencodeParserFromData(content, length);
 };
