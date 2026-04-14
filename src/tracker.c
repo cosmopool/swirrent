@@ -22,6 +22,7 @@
 #include "threads.h"
 #include "torrent.h"
 #include "tracker.h"
+#include "peer.h"
 
 #define FD_SIZE 400
 #define PORT "6666"

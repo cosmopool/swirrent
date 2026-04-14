@@ -6,6 +6,7 @@
 #include "bencode.h"
 #include "core.h"
 #include "log.h"
+#include "peer.h"
 #include "swirrent.h"
 #include "threads.h"
 #include "torrent.h"
@@ -79,7 +80,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
     if (result != 0) return result;
 
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
-    result = trackerPeer6Handshake(&resp, ctx->metainfo->info_hash, peer_id);
+    result = peer6Handshake(&resp, ctx->metainfo->info_hash, peer_id);
     logInfo("finished generating peer handshake, result: %d", result);
     if (result != 0) return result;
   } else {

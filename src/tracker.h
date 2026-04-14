@@ -82,4 +82,3 @@ typedef struct {
 
 void trackerOptionsSet(SwirrentOptions *);
 u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]);
-u32 trackerPeer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 peer_id[20]);
