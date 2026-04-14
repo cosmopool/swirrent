@@ -13,26 +13,29 @@
 #include "tracker.h"
 
 SwirrentContext swirrentInit(SwirrentOptions options) {
-  trackerOptionsSet(&options);
-  return (SwirrentContext){
+  SwirrentContext ctx = {
       .options = options,
       .metainfo = torrentMetainfoInit(),
       .parser = bencodeParserFromFile(options.torrent_path),
   };
+  logInit(ctx.options.log_enabled);
+  logSetOutputPath(ctx.options.log_output_path);
+  trackerOptionsSet(&ctx.options);
+  logInfo("initializing threads");
+  if (threadsPoolInit() > 0) logInfo("failed to init threads");
+  return ctx;
 }
 
 void swirrentShutdown(SwirrentContext *ctx) {
+  logInfo("deinitializing metainfo");
   torrentMetainfoCleanup(ctx->metainfo);
+  logInfo("deinitializing bencode parser");
   bencodeParserCleanup(&ctx->parser);
+  logInfo("deinitializing threads");
+  if (threadsPoolDeinit() > 0) logInfo("failed to deinit threads");
 }
 
 i32 swirrentMain(SwirrentContext *ctx) {
-  logInit(ctx->options.log_enabled);
-  logSetOutputPath(ctx->options.log_output_path);
-  logInfo("initializing threads");
-  if (threadsPoolInit() > 0) {
-    logInfo("failed to init threads");
-  }
   BencodeParser decoder = ctx->parser;
   // decode torrent file
   assert(decoder.bencode[decoder.cursor] == 'd');
@@ -91,11 +94,6 @@ i32 swirrentMain(SwirrentContext *ctx) {
     i32 result = trackerPeerListFetch(ctx->metainfo, &resp, peer_id);
     logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
-  }
-
-  logInfo("deinitializing threads");
-  if (threadsPoolDeinit() > 0) {
-    logInfo("failed to deinit threads");
   }
   return 0;
 }
