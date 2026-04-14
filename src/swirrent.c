@@ -41,7 +41,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
     logInfo("trackerless torrents are not implemented yet.");
     return 1;
   }
-  // torrentInfoHashGenerate(ctx->metainfo);
+  torrentInfoHashGenerate(ctx->metainfo);
   if (ctx->options.verbose) torrentMetainfoPrint(*ctx->metainfo);
 
   String raw_request = {0};
