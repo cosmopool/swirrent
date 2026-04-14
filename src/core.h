@@ -43,32 +43,33 @@ typedef double f64;
 
 // ---------- DynamicArray
 
-// typedef struct {
-//   u32 capacity;
-//   u32 count;
-//   void *data;
-// } DynamicArray;
-//
-// DynamicArray dynamicArrayInit(u32 initial_capacity) {
-//   return (DynamicArray){
-//       .capacity = initial_capacity,
-//       .data = calloc(initial_capacity, sizeof(FdIndex)),
-//   };
-// }
-//
-// void dynamicArrayCleanup(DynamicArray *da) {
-//   free(da->data);
-// }
-//
-// int dynamicArrayAdd(DynamicArray *da, FdIndex fd_index) {
-//   if (da->count + 1 > da->capacity) {
-//     da->capacity *= 2;
-//     da->data = realloc(da->data, da->capacity);
-//   }
-//   da->count++;
-//   assert(da->count < da->capacity);
-//   ((FdIndex *)da->data)[da->count] = fd_index;
-// }
+/*
+ * You must implement a struct like this to use the DA_* macros
+struct {
+  u32 capacity;
+  u32 count;
+  Type *data;
+};
+*/
+
+#define DA_INIT(Name, initial_capacity)                          \
+  (Name){                                                        \
+      .capacity = initial_capacity,                              \
+      .data = calloc(initial_capacity, sizeof(*(Name){0}.data)), \
+  };
+
+#define DA_DEINIT(da) free((da).data);
+
+#define ARRAY_TYPE(a) typeof(*(a)->data)
+
+#define DA_INSERT(da, value)                                                         \
+  if ((da)->count + 1 > (da)->capacity) {                                            \
+    (da)->capacity *= 2;                                                             \
+    (da)->data = realloc((da)->data, (da)->capacity);                                \
+  }                                                                                  \
+  ASSERT((da)->count < (da)->capacity, "count should always be less then capacity"); \
+  ((ARRAY_TYPE((da)) *)(da)->data)[(da)->count] = value;                             \
+  (da)->count++;
 
 // ---------- String
 /**
