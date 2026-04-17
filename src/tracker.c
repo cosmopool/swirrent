@@ -19,10 +19,10 @@
 #include "asio.h"
 #include "core.h"
 #include "log.h"
+#include "peer.h"
 #include "threads.h"
 #include "torrent.h"
 #include "tracker.h"
-#include "peer.h"
 
 #define FD_SIZE 400
 #define PORT "6666"
@@ -407,18 +407,19 @@ void freeTrackerState(TrackerState *t) {
 void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
   TorrentMetainfo *metainfo = m;
   i32 tracker_idx = fd_to_tracker[fd];
-  logInfo("===| tracker (%d)", trackers[tracker_idx].id);
-  switch (trackers[tracker_idx].action) {
+  TrackerState *tracker = trackers + tracker_idx;
+  logInfo("===| tracker (%d)", tracker->id);
+  switch (tracker->action) {
   case ACTION_CONNECT:
-    switch (trackers[tracker_idx].status) {
+    switch (tracker->status) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
       logInfo("\tCONNECT decoding response");
       if (trackerConnectionFinish(fd) < 0) {
-        trackers[tracker_idx].status = STATUS_FAILED;
+        tracker->status = STATUS_FAILED;
       } else {
-        trackers[tracker_idx].status = STATUS_SUCCEED;
+        tracker->status = STATUS_SUCCEED;
       }
       trackerStateResolver(fd, m, peer_id);
       return;
@@ -426,10 +427,10 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
       logInfo("\tCONNECT succeed");
       logInfo("\tANNOUNCE sent");
       if (trackerAnnounceStart(metainfo->info_hash, fd, peer_id) < 0) {
-        trackers[tracker_idx].status = STATUS_FAILED;
+        tracker->status = STATUS_FAILED;
         trackerStateResolver(fd, m, peer_id);
       } else {
-        trackers[tracker_idx].status = STATUS_SENT;
+        tracker->status = STATUS_SENT;
       }
       return;
     case STATUS_FAILED:
@@ -441,15 +442,15 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
     break;
 
   case ACTION_ANNOUNCE:
-    switch (trackers[tracker_idx].status) {
+    switch (tracker->status) {
     case STATUS_NONE:
       UNREACHABLE("there should be no unitialized tracker at this point");
     case STATUS_SENT:
       logInfo("\tANNOUNCE decoding response");
       if (trackerAnnounceFinish(fd) < 0) {
-        trackers[tracker_idx].status = STATUS_FAILED;
+        tracker->status = STATUS_FAILED;
       } else {
-        trackers[tracker_idx].status = STATUS_SUCCEED;
+        tracker->status = STATUS_SUCCEED;
       }
       trackerStateResolver(fd, m, peer_id);
       return;
