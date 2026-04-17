@@ -64,6 +64,8 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
       if (!has_callback) continue;
 
       pfds_ctx[fd].on_ready_callback(fd, m, id);
+      poll_count--;
+      if (poll_count <= 0) break;
     }
   }
 }
