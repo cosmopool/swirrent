@@ -28,7 +28,7 @@
 #define PORT "6666"
 
 static TrackerState trackers[MAX_FD] = {0};
-static i32 fd_to_tracker[MAX_FD] = {0};
+static i32 fd_to_tracker_idx[MAX_FD] = {0};
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
 
@@ -142,7 +142,7 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
 }
 
 i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20]) {
-  i32 tracker_idx = fd_to_tracker[fd];
+  i32 tracker_idx = fd_to_tracker_idx[fd];
   TorrentTracker tracker = {
       .connection_id = trackers[tracker_idx].connection_id,
       .event = TRACKER_EVENT_NONE,
@@ -201,7 +201,7 @@ i32 trackerAnnounceFinish(u32 fd) {
     logError("\ttracker(%d) announce response: invalid tracker announce response: wrong action\n", fd);
     return -1;
   }
-  i32 tracker_idx = fd_to_tracker[fd];
+  i32 tracker_idx = fd_to_tracker_idx[fd];
   if (be32toh(response->transaction_id) != trackers[tracker_idx].transaction_id) {
     logError("\ttracker(%d) announce response: invalid tracker announce response: wrong transaction id\n", fd);
     return -1;
@@ -321,7 +321,7 @@ i32 trackerConnectionFinish(i32 fd) {
     logError("\ttracker (%d) connect response: wrong length (%ld)\n", fd, bytes_read);
     return -1;
   }
-  i32 tracker_idx = fd_to_tracker[fd];
+  i32 tracker_idx = fd_to_tracker_idx[fd];
   // check tracker connect response
   if (be32toh(response->transaction_id) != trackers[tracker_idx].transaction_id) {
     logError("\ttracker (%d) connect response: invalid transaction_id in response!\n", tracker_idx);
@@ -406,7 +406,7 @@ void freeTrackerState(TrackerState *t) {
 
 void trackerStateResolver(i32 fd, void *m, u8 peer_id[20]) {
   TorrentMetainfo *metainfo = m;
-  i32 tracker_idx = fd_to_tracker[fd];
+  i32 tracker_idx = fd_to_tracker_idx[fd];
   TrackerState *tracker = trackers + tracker_idx;
   logInfo("===| tracker (%d)", tracker->id);
   switch (tracker->action) {
@@ -524,7 +524,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
       freeTrackerState(trackers + job.tracker_id);
       continue;
     }
-    fd_to_tracker[fd] = job.tracker_id;
+    fd_to_tracker_idx[fd] = job.tracker_id;
     asioFdSet((AsioFd){.fd = fd, .on_ready_callback = trackerStateResolver});
   }
 
