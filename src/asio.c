@@ -54,7 +54,8 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
     // Run through connections looking for data to read
     for (i32 i = 0; i <= MAX_FD; i++) {
       i32 fd = pfds[i].fd;
-      if (fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0) continue;
+      bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
+      if (is_empty_pfd) continue;
 
       bool is_ready_to_read = pfds[i].revents & (pfds[i].events);
       if (!is_ready_to_read) continue;
