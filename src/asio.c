@@ -1,11 +1,14 @@
 #include <assert.h>
+#include <errno.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "asio.h"
 #include "core.h"
+#include "log.h"
 
 static usize num_pfds = 0;
 static struct pollfd pfds[MAX_FD] = {0};
@@ -37,19 +40,20 @@ void asioUnsetAll() {
 }
 
 void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
-  u32 tries = 0;
   i32 poll_count;
-  while ((poll_count = poll(pfds, num_pfds, 1000)) >= 0) {
+  struct timespec ts;
+  while ((poll_count = poll(pfds, num_pfds, 15000)) >= 0) {
     if (poll_count == -1) {
       perror("poll");
       exit(1);
     }
-    printf("pending pfds: %lu, ready: %d\n", num_pfds, poll_count);
-    if (poll_count == 0) {
-      if (tries > 2) return;
-      tries++;
+    logInfo("[ASIO] pending pfds: %lu, ready: %d", num_pfds, poll_count);
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
+      logError("[TRACKER] error fetching current time: %s", strerror(errno));
       continue;
     }
+    u64 now = ts.tv_sec;
+    logInfo("NOW: %d", now);
 
     // Run through connections looking for data to read
     for (i32 i = 0; i <= MAX_FD; i++) {
@@ -57,15 +61,18 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
       bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
       if (is_empty_pfd) continue;
 
-      bool is_ready_to_read = pfds[i].revents & (pfds[i].events);
-      if (!is_ready_to_read) continue;
-
       bool has_callback = pfds_ctx[fd].on_ready_callback != NULL;
       if (!has_callback) continue;
 
-      pfds_ctx[fd].on_ready_callback(fd, m, id);
-      poll_count--;
-      if (poll_count <= 0) break;
+      if (pfds[i].revents & (pfds[i].events)) {
+        pfds_ctx[fd].on_ready_callback(fd, m, id, now, ASIO_READY);
+        continue;
+      }
+
+      if (pfds_ctx[fd].has_timeout_expired_callback(fd, now)) {
+        pfds_ctx[fd].on_ready_callback(fd, m, id, now, ASIO_TIMEOUT);
+        continue;
+      }
     }
   }
 }

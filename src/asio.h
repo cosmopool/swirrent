@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include "core.h"
 #include "torrent.h"
 
@@ -10,10 +9,17 @@
   ASSERT(fd > 0, "fd must be a positive integer."); \
   ASSERT(fd < MAX_FD, "the maximum fd size is" __STRING(MAX_FD) ".");
 
+typedef enum {
+  ASIO_NONE,
+  ASIO_TIMEOUT,
+  ASIO_READY,
+} ASIO_STATUS;
+
 typedef struct {
   i32 fd;
   void (*data_callback)();
-  void (*on_ready_callback)(i32, void *, u8[20]);
+  void (*on_ready_callback)(i32 fd, void *metainfo, u8 peer_id[20], u64 now, ASIO_STATUS);
+  bool (*has_timeout_expired_callback)(i32 fd, u64 now);
 } AsioFd;
 
 void asioFdSet(AsioFd asio_fd);
