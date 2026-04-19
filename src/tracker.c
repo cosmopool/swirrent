@@ -71,7 +71,7 @@ void trackerOptionsSet(SwirrentOptions *op) {
   options = op;
 }
 
-TorrentTrackerResponse trackerResponseDecode(String resp) {
+TorrentTrackerResponse trackerHttpResponseDecode(String resp) {
   TorrentTrackerResponse t_resp = {0};
   torrentResponseDecode(&resp, &t_resp);
 
@@ -420,7 +420,7 @@ TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentM
     logError("----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
     return resp;
   }
-  return trackerResponseDecode(raw_resp);
+  return trackerHttpResponseDecode(raw_resp);
 }
 
 void freeTrackerState(TrackerState *t) {
