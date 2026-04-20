@@ -16,17 +16,21 @@ static AsioFd pfds_ctx[MAX_FD] = {0};
 
 void asioFdSet(AsioFd asio) {
   ASSERT_VALID_FD(asio.fd);
-  pfds[asio.fd] = (struct pollfd){.fd = asio.fd, .events = POLLIN | POLLHUP};
-  pfds_ctx[asio.fd] = asio;
+  pfds[num_pfds] = (struct pollfd){.fd = asio.fd, .events = POLLIN | POLLHUP};
+  pfds_ctx[num_pfds] = asio;
   num_pfds++;
 }
 
 void asioFdUnset(i32 fd) {
   ASSERT_VALID_FD(fd);
   close(fd);
-  pfds[fd] = (struct pollfd){0};
-  pfds_ctx[fd] = (AsioFd){0};
-  num_pfds--;
+  for (u32 i = 0; i < num_pfds; i++) {
+    if (pfds[i].fd != fd) continue;
+    pfds[i] = (struct pollfd){0};
+    pfds_ctx[i] = (AsioFd){0};
+    num_pfds--;
+    return;
+  }
 }
 
 void asioUnsetAll() {
@@ -55,21 +59,21 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
     u64 now = ts.tv_sec;
 
     // Run through connections looking for data to read
-    for (i32 i = 0; i <= MAX_FD; i++) {
+    for (i32 i = 0; i <= num_pfds; i++) {
       i32 fd = pfds[i].fd;
       bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
       if (is_empty_pfd) continue;
 
-      bool has_callback = pfds_ctx[fd].on_ready_callback != NULL;
+      bool has_callback = pfds_ctx[i].on_ready_callback != NULL;
       if (!has_callback) continue;
 
       if (pfds[i].revents & (pfds[i].events)) {
-        pfds_ctx[fd].on_ready_callback(fd, m, id, now, ASIO_READY);
+        pfds_ctx[i].on_ready_callback(fd, m, id, now, ASIO_READY);
         continue;
       }
 
-      if (pfds_ctx[fd].has_timeout_expired_callback(fd, now)) {
-        pfds_ctx[fd].on_ready_callback(fd, m, id, now, ASIO_TIMEOUT);
+      if (pfds_ctx[i].has_timeout_expired_callback(fd, now)) {
+        pfds_ctx[i].on_ready_callback(fd, m, id, now, ASIO_TIMEOUT);
         continue;
       }
     }
