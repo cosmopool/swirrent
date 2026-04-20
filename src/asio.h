@@ -17,8 +17,9 @@ typedef enum {
 
 typedef struct {
   i32 fd;
+  void *args;
   void (*data_callback)();
-  void (*on_ready_callback)(i32 fd, void *metainfo, u8 peer_id[20], u64 now, ASIO_STATUS);
+  void (*on_ready_callback)(i32 fd, u64 now, ASIO_STATUS, void *args);
   bool (*has_timeout_expired_callback)(i32 fd, u64 now);
 } AsioFd;
 

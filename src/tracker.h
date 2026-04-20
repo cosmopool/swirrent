@@ -59,6 +59,11 @@ typedef struct {
 } __attribute__((packed)) TrackerAnnounceResponse;
 
 typedef struct {
+  u8 *info_hash;
+  u8 *peer_id;
+} AsioArgs;
+
+typedef struct {
   u32 id;
   usize last_try;
   u64 connection_id;

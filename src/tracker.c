@@ -444,7 +444,8 @@ bool trackerHasTimeoutExpired(i32 fd, u64 now) {
   return diff > trackerTimeoutCalculate(tracker);
 }
 
-void trackerStateResolver(i32 fd, void *m, u8 peer_id[20], u64 now, ASIO_STATUS asio_status) {
+void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_args) {
+  AsioArgs *args = asio_args;
   TrackerState *tracker = trackerStateFromFd(fd);
   logInfo("===| tracker (%d) | fd (%d)", tracker->id, fd);
   logInfo("\ttries: %d", tracker->tries);
@@ -471,14 +472,12 @@ void trackerStateResolver(i32 fd, void *m, u8 peer_id[20], u64 now, ASIO_STATUS 
     tracker->tries = 0;
     if (trackerConnectionFinish(fd) < 0) break;
 
-    TorrentMetainfo *metainfo = m;
-    if (trackerAnnounceStart(metainfo->info_hash, fd, peer_id, now) < 0) break;
+    if (trackerAnnounceStart(args->info_hash, fd, args->peer_id, now) < 0) break;
     return;
 
   case ACTION_ANNOUNCE:
     if (asio_status == ASIO_TIMEOUT) {
-      TorrentMetainfo *metainfo = m;
-      if (trackerAnnounceStart(metainfo->info_hash, fd, peer_id, now) < 0) break;
+      if (trackerAnnounceStart(args->info_hash, fd, args->peer_id, now) < 0) break;
       return;
     }
 
@@ -501,6 +500,8 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
   //   return 1;
   // }
 
+  AsioArgs asio_args = {.info_hash = metainfo->info_hash, .peer_id = peer_id};
+  peers.data = calloc(5, IPV4_LEN + PORT_LEN);
   isize remaining = 0;
   for (u32 j = 0; j < metainfo->trackers_count; j++) {
     String url = metainfo->trackers_url[j];
@@ -546,6 +547,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     fd_to_tracker_idx[fd] = job.tracker_id;
     asioFdSet((AsioFd){
         .fd = fd,
+        .args = &asio_args,
         .on_ready_callback = trackerStateResolver,
         .has_timeout_expired_callback = trackerHasTimeoutExpired,
     });
@@ -554,7 +556,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
       logError("[TRACKER] error fetching current time: %s", strerror(errno));
       continue;
     }
-    trackerStateResolver(fd, metainfo, peer_id, ts.tv_sec, ASIO_NONE);
+    trackerStateResolver(fd, ts.tv_sec, ASIO_NONE, &asio_args);
   }
 
   asioWaitForEvents(metainfo, peer_id);

@@ -68,12 +68,12 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
       if (!has_callback) continue;
 
       if (pfds[i].revents & (pfds[i].events)) {
-        pfds_ctx[i].on_ready_callback(fd, m, id, now, ASIO_READY);
+        pfds_ctx[i].on_ready_callback(fd, now, ASIO_READY, pfds_ctx[i].args);
         continue;
       }
 
       if (pfds_ctx[i].has_timeout_expired_callback(fd, now)) {
-        pfds_ctx[i].on_ready_callback(fd, m, id, now, ASIO_TIMEOUT);
+        pfds_ctx[i].on_ready_callback(fd, now, ASIO_TIMEOUT, pfds_ctx[i].args);
         continue;
       }
     }
