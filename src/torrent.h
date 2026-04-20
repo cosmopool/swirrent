@@ -132,7 +132,7 @@ typedef struct {
 } TorrentPeer6;
 
 typedef struct {
-  const char *data;
+  char *data;
   usize len;
   usize count;
 } TorrentPeers;
@@ -174,6 +174,7 @@ void torrentInfoMultiFileSet(TorrentInfo *info);
 void torrentPieceHashGet(usize piece_idx, TorrentMetainfo *m, char *hash_out);
 TorrentPeer torrentPeerGet(const char *peers, usize idx);
 TorrentPeer6 torrentPeer6Get(const char *peers, usize idx);
+void torrentAddPeers(TorrentPeers *peers, u8 *new_peers, u32 num_peers);
 
 void torrentMetainfoDecode(BencodeParser *p, TorrentMetainfo *out);
 

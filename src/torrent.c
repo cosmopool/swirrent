@@ -420,7 +420,7 @@ u32 torrentResponseDecode(String *raw_resp, TorrentTrackerResponse *resp) {
       }
 
       resp->peers = (TorrentPeers){
-          .data = str.data,
+          .data = (char *)str.data,
           .len = str.len,
           .count = str.len / (IPV4_LEN + PORT_LEN),
       };
@@ -464,4 +464,13 @@ u32 torrentResponseDecode(String *raw_resp, TorrentTrackerResponse *resp) {
   }
   p.cursor++;
   return 0;
+}
+
+void torrentAddPeers(TorrentPeers *peers, u8 *new_peers, u32 num_peers) {
+  usize peer_size = IPV4_LEN + PORT_LEN;
+  usize new_peers_len = num_peers * peer_size;
+  peers->data = realloc(peers->data, peers->len + new_peers_len);
+  memcpy(peers->data + (peers->count * peer_size), new_peers, new_peers_len);
+  peers->count += num_peers;
+  peers->len += new_peers_len;
 }

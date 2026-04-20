@@ -33,6 +33,7 @@ static TrackerState trackers[MAX_FD] = {0};
 static i32 fd_to_tracker_idx[MAX_FD] = {0};
 static char data[1024 * 1024] = {0};
 static SwirrentOptions *options = {0};
+static TorrentPeers peers = {0};
 
 TrackerState *trackerStateFromFd(i32 fd) {
   i32 tracker_idx = fd_to_tracker_idx[fd];
@@ -221,19 +222,27 @@ i32 trackerAnnounceFinish(u32 fd) {
     logError("\announce response: invalid tracker announce response: wrong transaction id\n");
     return -1;
   }
+  u32 old_len = peers.len;
+  u32 num_peers = (bytes_read - sizeof(*response)) / (IPV4_LEN + PORT_LEN);
+  torrentAddPeers(&peers, response->peers, num_peers);
   logInfo("\ttracker: interval: %u", be32toh(response->interval));
   logInfo("\ttracker: leechers: %u", be32toh(response->leechers));
   logInfo("\ttracker: seeders: %u", be32toh(response->seeders));
-  logInfo("\ttracker: peers %lu:", (bytes_read - sizeof(*response)) / 6);
-  logInfo("\ttracker: response size %lu:", bytes_read);
-  for (u32 j = 0; j < (bytes_read - sizeof(*response)) / 6; j++) {
-    TorrentPeer peer = torrentPeerGet((char *)response->peers, j);
+  logInfo("\ttracker: peers count: %lu", num_peers);
+  logInfo("\ttracker: peers len: %lu", bytes_read - sizeof(*response));
+  logInfo("\ttracker: response size: %lu", bytes_read);
+
+  ASSERT(memcmp(peers.data + old_len, response->peers, num_peers * (IPV4_LEN + PORT_LEN)) == 0, "same value");
+  logInfo("");
+  logInfo("===== all available peers:");
+  for (u32 i = 0; i < peers.count; i++) {
+    TorrentPeer peer = torrentPeerGet(peers.data, i);
     char buf[INET_ADDRSTRLEN] = {0};
     if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
-      logError("\t(%d)\t failed to parse ipv4: %s\n", j, strerror(errno));
+      logError("\t failed to parse ipv4: %s\n", i, strerror(errno));
       return -1;
     }
-    logInfo("\t(%d)\t ip: %s\t | port: %d", j, buf, peer.port);
+    logInfo("\t ip: %s\t | port: %d", buf, peer.port);
   }
   logInfo("");
 
@@ -327,9 +336,9 @@ i32 trackerConnectionStart(i32 fd, u64 now) {
 i32 trackerConnectionFinish(i32 fd) {
   logInfo("\tCONNECT decoding response");
   TrackerConnectResponse *response = malloc(1024);
-  struct sockaddr from;
-  socklen_t from_len;
-  isize bytes_read = recvfrom(fd, response, sizeof(*response), MSG_WAITALL, &from, &from_len);
+  struct sockaddr_storage from;
+  socklen_t from_len = sizeof(from);
+  isize bytes_read = recvfrom(fd, response, sizeof(*response), MSG_WAITALL, (struct sockaddr *)&from, &from_len);
   if (bytes_read == 0) {
     logError("connection was closed by tracker: %s\n", strerror(errno));
     return -1;
