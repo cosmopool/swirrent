@@ -1,4 +1,6 @@
+#include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +37,31 @@ void swirrentShutdown(SwirrentContext *ctx) {
   if (threadsPoolDeinit() > 0) logInfo("failed to deinit threads");
 }
 
-i32 swirrentMain(SwirrentContext *ctx) {
+void swirrentHandshake(SwirrentContext *ctx) {
+  logInfo("target peer: %s", ctx->options.peer_address);
+  logInfo("performing peer handshake");
+  u8 peer_id[20] = {"-MY0001-"};
+  for (int i = 8; i < 20; i++)
+    peer_id[i] = rand() & 0xff;
+  logInfo("current peer id: %s", peer_id);
+
+  u8 ip_str[INET_ADDRSTRLEN] = {0};
+  u8 c;
+  u16 i = 0;
+  while ((c = ctx->options.peer_address[i]) != '\0') {
+    if (c == ':') break;
+    ip_str[i] = ctx->options.peer_address[i];
+    i++;
+  }
+
+  u16 port = atoi(ctx->options.peer_address + i + 1);
+  if (peerHandshake(ip_str, port, ctx->metainfo->info_hash, peer_id) < 0) {
+    printf("failed to perform handshake with peer");
+    return;
+  }
+}
+
+i32 swirrentDecodeMetainfo(SwirrentContext *ctx) {
   BencodeParser decoder = ctx->parser;
   // decode torrent file
   assert(decoder.bencode[decoder.cursor] == 'd');
@@ -46,6 +72,12 @@ i32 swirrentMain(SwirrentContext *ctx) {
   }
   torrentInfoHashGenerate(ctx->metainfo);
   if (ctx->options.verbose) torrentMetainfoPrint(*ctx->metainfo);
+  return 0;
+}
+
+i32 swirrentMain(SwirrentContext *ctx) {
+  i32 decode_result = swirrentDecodeMetainfo(ctx);
+  if (decode_result < 0) return decode_result;
 
   String raw_request = {0};
   if (ctx->options.raw_request_path) {
@@ -83,7 +115,9 @@ i32 swirrentMain(SwirrentContext *ctx) {
     if (result != 0) return result;
 
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
-    result = peer6Handshake(&resp, ctx->metainfo->info_hash, peer_id);
+    TorrentPeer peer = torrentPeerGet(resp.peers.data, 0);
+    result = peer4Handshake(peer, ctx->metainfo->info_hash, peer_id);
+    // result = peer6Handshake(resp.peers6[0], ctx->metainfo->info_hash, peer_id);
     logInfo("finished generating peer handshake, result: %d", result);
     if (result != 0) return result;
   } else {

@@ -33,7 +33,46 @@ dap.adapters.gdb_switch_hw = function(callback, config)
   })
 end
 
+local function default_config(name, args)
+  return {
+    name = name,
+    type = "lldb",
+    request = "launch",
+    program = function()
+      local ok, _, code = os.execute("./build.sh")
+      if ok then return "${workspaceFolder}/swirrent" end
+      error("Build failed with: ${code}");
+    end,
+    cwd = "${workspaceFolder}",
+    stopOnEntry = false,
+    args = args,
+    externalConsole = false,
+    runInTerminal = false,
+    MIMode = 'gdb',
+    setupCommands = {
+      {
+        text = '-enable-pretty-printing',
+        description = 'Enable pretty printing',
+        ignoreFailures = false,
+      },
+    },
+  }
+end
+
+local function first_peer()
+  for line in io.lines(vim.fn.getcwd() .. "/peers") do
+    line = vim.trim(line)
+    if line ~= "" and not line:match("^#") then return line end
+  end
+  error("No peer found in peers file")
+end
+
+
 dap.configurations.c = {
+  default_config("Debug", { "e.torrent", "-v" }),
+  default_config("Debug handshake", { "e.torrent", "-v", "--handshake", first_peer() }),
+  default_config("Debug load response", { "e.torrent", "-v", "--load-response", "resp.bin" }),
+  default_config("Debug dump response", { "e.torrent", "-v", "--dump-response", "resp.bin" }),
   {
     name = "Nintendo Switch (emulator)",
     type = "gdb_switch",
@@ -51,37 +90,6 @@ dap.configurations.c = {
     cwd = vim.fn.getcwd(),
     setup_commands = {
       "target extended-remote 192.168.100.220:22225",
-    },
-  },
-  {
-    name = "Debug decoder",
-    type = "lldb",
-    request = "launch",
-    program = function()
-      os.execute("./build.sh")
-      vim.defer_fn(function()
-        vim.notify("Build complete, starting debug...", vim.log.levels.INFO)
-      end, 500)
-      return "${workspaceFolder}/decoder";
-    end,
-    cwd = "${workspaceFolder}",
-    stopOnEntry = false,
-    args = function()
-      -- local file = vim.fn.input("Path to torrent file to decode: ", vim.fn.getcwd() .. "/", "file")
-      -- return { file, "--dump-response", "r.bin" }
-      return { "e.torrent", "-v" }
-      -- return { "e.torrent", "-v", "--load-response", "resp.bin" }
-      -- return { "e.torrent", "-v", "--dump-response", "resp.bin" }
-    end,
-    externalConsole = false, -- Critical for seeing output in nvim
-    runInTerminal = false,
-    MIMode = 'gdb',
-    setupCommands = {
-      {
-        text = '-enable-pretty-printing',
-        description = 'Enable pretty printing',
-        ignoreFailures = false,
-      },
     },
   },
 }

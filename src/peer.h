@@ -23,6 +23,7 @@ typedef struct {
 } PeerStatus;
 
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]);
-u32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size);
-u32 peer4Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id);
-u32 peer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 peer_id[20]);
+i32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size);
+i32 peer4Handshake(TorrentPeer, u8 *info_hash, u8 *peer_id);
+i32 peer6Handshake(TorrentPeer6, u8 *info_hash, u8 peer_id[20]);
+i32 peerHandshake(void *, u16, u8 *info_hash, u8 *peer_id);

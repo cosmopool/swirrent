@@ -53,7 +53,6 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
       continue;
     }
     u64 now = ts.tv_sec;
-    logInfo("NOW: %d", now);
 
     // Run through connections looking for data to read
     for (i32 i = 0; i <= MAX_FD; i++) {

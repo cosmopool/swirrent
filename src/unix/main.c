@@ -8,9 +8,16 @@ void swirrentPrintMemoryUtilization(u64 *total, u64 *used) {
   (void)used;
 }
 
+enum MODE {
+  MODE_NONE,
+  MODE_NORMAL,
+  MODE_HANDSHAKE,
+};
+
 i32 main(i32 argc, char *argv[]) {
   SwirrentOptions options = {0};
 
+  enum MODE mode = MODE_NONE;
   for (i32 i = 1; i < argc; i++) {
     if (i == 1) {
       if (!argv[i]) {
@@ -18,6 +25,7 @@ i32 main(i32 argc, char *argv[]) {
         exit(1);
       }
       options.torrent_path = argv[i];
+      mode = MODE_NORMAL;
       continue;
     }
 
@@ -32,6 +40,7 @@ i32 main(i32 argc, char *argv[]) {
         return 1;
       }
       options.raw_request_path = argv[i];
+      mode = MODE_NORMAL;
       continue;
     }
 
@@ -47,6 +56,17 @@ i32 main(i32 argc, char *argv[]) {
       }
       options.dump_response = true;
       options.raw_request_output_path = argv[i];
+      mode = MODE_NORMAL;
+      continue;
+    }
+
+    else if (strncmp(argv[i], "--handshake", 11) == 0 || strncmp(argv[i], "-hs", 3) == 0) {
+      i++;
+      if (!argv[i]) {
+        printf("peer ip and port must be supplied as '<ip>:<port>'.");
+        return 1;
+      }
+      options.peer_address = argv[i];
       continue;
     }
 
@@ -61,8 +81,15 @@ i32 main(i32 argc, char *argv[]) {
       continue;
     }
   }
+  ASSERT(mode != MODE_NONE, "a mode must have been set by now");
 
   SwirrentContext ctx = swirrentInit(options);
+  if (ctx.options.peer_address) {
+    swirrentDecodeMetainfo(&ctx);
+    swirrentHandshake(&ctx);
+    swirrentShutdown(&ctx);
+    return 0;
+  }
   swirrentMain(&ctx);
   swirrentShutdown(&ctx);
   return 0;

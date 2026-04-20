@@ -5,8 +5,9 @@
 
 #include "log.h"
 #include "peer.h"
+#include "torrent.h"
 
-u32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size) {
+i32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size) {
   u32 c = connect(fd, (struct sockaddr *)&sock, sock_size);
   if (c != 0) {
     logInfo("connection with peer failed: %s", strerror(errno));
@@ -68,61 +69,117 @@ void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) 
   if (file) fclose(file);
 }
 
-u32 peer4Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 *peer_id) {
-  char handshake_buff[68] = {0};
-  peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
-
-  TorrentPeer peer = torrentPeerGet(resp->peers.data, 0);
-  char ip_str[INET_ADDRSTRLEN] = {0};
-  if (!inet_ntop(AF_INET, peer.ip.data, ip_str, sizeof(ip_str))) {
-    logInfo("  (%d)\t failed to parse ipv: %s", 0, strerror(errno));
-    return -1;
-  }
-
+i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
   u32 result = 0;
   i32 fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
-    logInfo("socket error: %s", strerror(errno));
+    logError("failed opening socket", strerror(errno));
     return fd;
   }
 
   struct sockaddr_in sock = {
-      .sin_port = htons(peer.port),
+      .sin_port = htobe16(port),
       .sin_family = AF_INET,
   };
-  memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
+  i32 r = inet_pton(AF_INET, ip, &(sock.sin_addr));
+  if (r == 0) {
+    logError("invalid ip format: %s", ip);
+    result = r;
+    goto cleanup;
+  }
+  if (r < 0) {
+    logError("invalid ip: %s", strerror(errno));
+    result = r;
+    goto cleanup;
+  }
 
+  logInfo("connecting with peer");
   u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
   if (c != 0) {
-    logInfo("connection with peer failed: %s", strerror(errno));
+    logError("connection with peer failed: %s", strerror(errno));
     result = c;
     goto cleanup;
   }
 
+  logInfo("generating handshake");
+  char handshake_buff[68] = {0};
+  peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
+
+  logInfo("sending handshake");
   if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
-    logInfo("failed to send handshake to peer: %s", strerror(errno));
+    logError("failed to send handshake to peer: %s", strerror(errno));
     result = -1;
     goto cleanup;
   }
 
+  logInfo("waiting response from peer");
   char resp_buff[1024] = {0};
   if (read(fd, resp_buff, sizeof(resp_buff) - 1) < 0) {
-    logInfo("failed to read peer response: %s", strerror(errno));
+    logError("failed to read peer response: %s", strerror(errno));
     result = -1;
     goto cleanup;
   }
   logInfo("peer response: %s", resp_buff);
 
 cleanup:
+  logInfo("closing socket (%d)", fd);
   close(fd);
   return result;
 }
 
-u32 peer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 peer_id[20]) {
+i32 peer4Handshake(TorrentPeer peer, u8 *info_hash, u8 *peer_id) {
+  u32 result = 0;
+  i32 fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    logError("failed opening socket", strerror(errno));
+    return fd;
+  }
+
+  struct sockaddr_in sock = {
+      .sin_port = htobe16(peer.port),
+      .sin_family = AF_INET,
+  };
+  memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
+
+  logInfo("connecting with peer");
+  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
+  if (c != 0) {
+    logError("connection with peer failed: %s", strerror(errno));
+    result = c;
+    goto cleanup;
+  }
+
+  logInfo("generating handshake");
   char handshake_buff[68] = {0};
   peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 
-  TorrentPeer6 peer = torrentPeer6Get(resp->peers6.data, 0);
+  logInfo("sending handshake");
+  if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
+    logError("failed to send handshake to peer: %s", strerror(errno));
+    result = -1;
+    goto cleanup;
+  }
+
+  logInfo("waiting response from peer");
+  char resp_buff[1024] = {0};
+  if (read(fd, resp_buff, sizeof(resp_buff) - 1) < 0) {
+    logError("failed to read peer response: %s", strerror(errno));
+    result = -1;
+    goto cleanup;
+  }
+  logInfo("peer response: %s", resp_buff);
+
+cleanup:
+  logInfo("closing socket (%d)", fd);
+  close(fd);
+  return result;
+}
+
+i32 peer6Handshake(TorrentPeer6 peer, u8 *info_hash, u8 peer_id[20]) {
+  char handshake_buff[68] = {0};
+  peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
+
+  // TorrentPeer6 peer = torrentPeer6Get(resp->peers6.data, 0);
   char ip_str[INET6_ADDRSTRLEN] = {0};
   if (!inet_ntop(AF_INET6, peer.ip.data, ip_str, sizeof(ip_str))) {
     logInfo("  (%d)\t failed to parse ipv6: %s", 0, strerror(errno));
@@ -138,7 +195,7 @@ u32 peer6Handshake(TorrentTrackerResponse *resp, u8 *info_hash, u8 peer_id[20]) 
 
   struct sockaddr_in sock = {
       .sin_port = htons(peer.port),
-      .sin_family = AF_INET,
+      .sin_family = AF_INET6,
   };
   memcpy(&sock.sin_addr, peer.ip.data, peer.ip.len);
 

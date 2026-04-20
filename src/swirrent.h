@@ -15,6 +15,7 @@ typedef struct {
   char *raw_request_path;
   char *raw_request_output_path;
   char *log_output_path;
+  char *peer_address;
 } SwirrentOptions;
 
 typedef struct {
@@ -25,5 +26,7 @@ typedef struct {
 
 SwirrentContext swirrentInit(SwirrentOptions);
 i32 swirrentMain(SwirrentContext *);
+i32 swirrentDecodeMetainfo(SwirrentContext *);
+void swirrentHandshake(SwirrentContext *);
 void swirrentShutdown(SwirrentContext *);
 void swirrentPrintMemoryUtilization(u64 *total, u64 *used);

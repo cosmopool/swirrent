@@ -12,3 +12,5 @@ build_test/
 compile_commands.json
 decoder
 handshake
+swirrent
+peers
