@@ -59,7 +59,15 @@ local function default_config(name, args)
   }
 end
 
-local function first_peer()
+local function torrent_file()
+  for line in io.lines(vim.fn.getcwd() .. "/torrents") do
+    line = vim.trim(line)
+    if line ~= "" and not line:match("^#") then return line end
+  end
+  error("No torrent path found in torrents file")
+end
+
+local function peers_file()
   for line in io.lines(vim.fn.getcwd() .. "/peers") do
     line = vim.trim(line)
     if line ~= "" and not line:match("^#") then return line end
@@ -69,8 +77,8 @@ end
 
 
 dap.configurations.c = {
-  default_config("Debug", { "e.torrent", "-v" }),
-  default_config("Debug handshake", { "e.torrent", "-v", "--handshake", first_peer() }),
+  default_config("Debug", { torrent_file, "-v" }),
+  default_config("Debug handshake", { "e.torrent", "-v", "--handshake", peers_file }),
   default_config("Debug load response", { "e.torrent", "-v", "--load-response", "resp.bin" }),
   default_config("Debug dump response", { "e.torrent", "-v", "--dump-response", "resp.bin" }),
   {
