@@ -287,18 +287,6 @@ i32 trackerSockOpen(TrackerState *tracker) {
     return fd;
   }
 
-  // bind to any port
-  struct sockaddr_in src = {
-      .sin_family = AF_INET,
-      .sin_addr.s_addr = htonl(INADDR_ANY),
-      .sin_port = htons(0),
-  };
-  if (bind(fd, (struct sockaddr *)&src, sizeof(src)) < 0) {
-    logError("\tfailed to bind to tracker fd: %s\n", strerror(errno));
-    close(fd);
-    return -1;
-  }
-
   return fd;
 }
 
