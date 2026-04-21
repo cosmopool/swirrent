@@ -78,9 +78,9 @@ end
 
 dap.configurations.c = {
   default_config("Debug", { torrent_file, "-v" }),
-  default_config("Debug handshake", { "e.torrent", "-v", "--handshake", peers_file }),
-  default_config("Debug load response", { "e.torrent", "-v", "--load-response", "resp.bin" }),
-  default_config("Debug dump response", { "e.torrent", "-v", "--dump-response", "resp.bin" }),
+  default_config("Debug handshake", { torrent_file, "-v", "--handshake", peers_file }),
+  default_config("Debug load response", { torrent_file, "-v", "--load-response", "resp.bin" }),
+  default_config("Debug dump response", { torrent_file, "-v", "--dump-response", "resp.bin" }),
   {
     name = "Nintendo Switch (emulator)",
     type = "gdb_switch",
