@@ -25,5 +25,5 @@ typedef struct {
 
 void asioFdSet(AsioFd asio_fd);
 void asioFdUnset(i32 fd);
-void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]);
-void asioUnsetAll();
+void asioWaitForEvents(void);
+void asioUnsetAll(void);

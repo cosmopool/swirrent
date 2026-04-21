@@ -43,7 +43,7 @@ void asioUnsetAll() {
   }
 }
 
-void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
+void asioWaitForEvents() {
   i32 poll_count;
   struct timespec ts;
   while ((poll_count = poll(pfds, num_pfds, 15000)) >= 0) {
@@ -59,8 +59,8 @@ void asioWaitForEvents(TorrentMetainfo *m, u8 id[20]) {
     u64 now = ts.tv_sec;
 
     // Run through connections looking for data to read
-    for (i32 i = 0; i <= num_pfds; i++) {
-      i32 fd = pfds[i].fd;
+    for (u32 i = 0; i <= num_pfds; i++) {
+      u32 fd = pfds[i].fd;
       bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
       if (is_empty_pfd) continue;
 

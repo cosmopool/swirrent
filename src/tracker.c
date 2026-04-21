@@ -556,7 +556,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     trackerStateResolver(fd, ts.tv_sec, ASIO_NONE, &asio_args);
   }
 
-  asioWaitForEvents(metainfo, peer_id);
+  asioWaitForEvents();
   asioUnsetAll();
   for (u32 i = 0; i <= MAX_FD; i++) {
     if (trackers[i].id == 0) continue;
