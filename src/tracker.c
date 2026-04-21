@@ -73,7 +73,7 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20], u64 now) {
   ts->tries++;
   ts->last_try = now;
 
-  TorrentTracker tracker = {
+  Tracker tracker = {
       .connection_id = ts->connection_id,
       .event = TRACKER_EVENT_NONE,
       .port = ts->port,

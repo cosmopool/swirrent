@@ -22,11 +22,6 @@ typedef enum : u32 {
 } TrackerEvent;
 
 typedef struct {
-  char info_hash[20];
-  usize pieces_bitfield;
-} DownloaderProgress;
-
-typedef struct {
   u64 connection_id;
   u32 action;
   u32 transaction_id;
@@ -135,7 +130,7 @@ typedef struct {
   // complete when started. Downloaders send an announcement using stopped when
   // they cease downloading.
   TrackerEvent event;
-} TorrentTracker;
+} Tracker;
 
 u32 trackerPeerListFetch(String *urls, usize count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH],
                          void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count));
