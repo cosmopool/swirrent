@@ -3,32 +3,47 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+// #include "asio.h"
 #include "core.h"
 #include "log.h"
 #include "peer.h"
-#include "torrent.h"
 
-i32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size) {
-  u32 c = connect(fd, (struct sockaddr *)&sock, sock_size);
-  if (c != 0) {
-    logInfo("connection with peer failed: %s", strerror(errno));
-    return c;
+// static PeerState peers[MAX_FD] = {0};
+// static i32 fd_to_peer_idx[MAX_FD] = {0};
+
+Peer4 peer4Get(u8 *peers, usize idx) {
+  u8 *entry = peers + idx * (IPV4_LEN + PORT_LEN);
+  return (Peer4){
+      .ip = {
+          .data = (const char *)entry,
+          .len = IPV4_LEN,
+      },
+      .port = ((u8)entry[IPV4_LEN] << 8) | (u8)entry[IPV4_LEN + 1],
+  };
+}
+
+Peer6 peer6Get(u8 *peers, usize idx) {
+  u8 *entry = peers + idx * (IPV6_LEN + PORT_LEN);
+  return (Peer6){
+      .ip = {
+          .data = (const char *)entry,
+          .len = IPV6_LEN,
+      },
+      .port = ((u8)entry[IPV6_LEN] << 8) | (u8)entry[IPV6_LEN + 1],
+  };
+}
+
+void peerAdd(u8 *peers, usize peer_size, usize peers_count) {
+  logInfo("[PEER] add:");
+  for (u32 i = 0; i < peers_count; i++) {
+    Peer4 peer = peer4Get((u8 *)peers, i);
+    char buf[INET_ADDRSTRLEN] = {0};
+    if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
+      return logError("\t failed to parse ipv4: %s\n", i, strerror(errno));
+    }
+    logInfo("\t ip: %s\t | port: %d", buf, peer.port);
   }
-
-  if (write(fd, data, data_size) < 0) {
-    logInfo("failed to send data to peer: %s", strerror(errno));
-    return -1;
-  }
-
-  char resp_buff[1024] = {0};
-  if (read(fd, resp_buff, 1023) < 0) {
-    logInfo("failed to read peer response: %s", strerror(errno));
-    return -1;
-  }
-  logInfo("peer response: %s", resp_buff);
-
-  close(fd);
-  return 0;
+  logInfo("");
 }
 
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) {
@@ -57,6 +72,29 @@ void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) 
   offset += PEER_ID_LENGTH;
   assert(offset == 68);
 }
+
+// i32 peerConnect(i32 fd, char *data, usize data_size) {
+//   i32 c = connect(fd, (struct sockaddr *)&sock, sock_size);
+//   if (c != 0) {
+//     logError("connection with peer failed: %s", strerror(errno));
+//     return c;
+//   }
+//
+//   if (send(fd, data, data_size, 0) < 0) {
+//     logError("failed to send data to peer: %s", strerror(errno));
+//     return -1;
+//   }
+//
+//   char resp_buff[1024] = {0};
+//   if (recv(fd, resp_buff, 1024, 0) < 0) {
+//     logError("failed to read peer response: %s", strerror(errno));
+//     return -1;
+//   }
+//   logInfo("peer response: %s", resp_buff);
+//
+//   close(fd);
+//   return 0;
+// }
 
 i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
   u32 result = 0;
@@ -146,7 +184,7 @@ cleanup:
   return result;
 }
 
-i32 peer4Handshake(TorrentPeer peer, u8 *info_hash, u8 *peer_id) {
+i32 peer4Handshake(Peer4 peer, u8 *info_hash, u8 *peer_id) {
   u32 result = 0;
   i32 fd = socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0) {
@@ -194,7 +232,7 @@ cleanup:
   return result;
 }
 
-i32 peer6Handshake(TorrentPeer6 peer, u8 *info_hash, u8 peer_id[20]) {
+i32 peer6Handshake(Peer6 peer, u8 *info_hash, u8 peer_id[20]) {
   char handshake_buff[68] = {0};
   peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 

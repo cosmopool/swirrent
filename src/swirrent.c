@@ -22,7 +22,7 @@ SwirrentContext swirrentInit(SwirrentOptions options) {
   };
   logInit(ctx.options.log_enabled);
   logSetOutputPath(ctx.options.log_output_path);
-  trackerOptionsSet(&ctx.options);
+  // trackerOptionsSet(&ctx.options);
   logInfo("initializing threads");
   if (threadsPoolInit() > 0) logInfo("failed to init threads");
   return ctx;
@@ -115,8 +115,8 @@ i32 swirrentMain(SwirrentContext *ctx) {
     if (result != 0) return result;
 
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
-    TorrentPeer peer = torrentPeerGet(resp.peers.data, 0);
-    result = peer4Handshake(peer, ctx->metainfo->info_hash, peer_id);
+    // Peer4 peer = peerGet(resp.peers.data, 0);
+    // result = peer4Handshake(peer, ctx->metainfo->info_hash, peer_id);
     // result = peer6Handshake(resp.peers6[0], ctx->metainfo->info_hash, peer_id);
     logInfo("finished generating peer handshake, result: %d", result);
     if (result != 0) return result;
@@ -124,8 +124,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
     logInfo("no dump response. starting fresh.");
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
     // no raw request was load, so we will talk to trackers for peers
-    TorrentTrackerResponse resp = {0};
-    i32 result = trackerPeerListFetch(ctx->metainfo, &resp, peer_id);
+    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo->info_hash, peer_id, peerAdd);
     logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
   }

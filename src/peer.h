@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdbool.h>
 #include <sys/socket.h>
 #ifdef __linux__
@@ -7,20 +9,22 @@
 #endif
 
 #include "core.h"
-#include "torrent.h"
 
 typedef enum {
   CHOKED,
   UNCHOKED,
   INTERESTED,
   NOT_INTERESTED,
+  NONE,
 } PEER_STATUS;
 
 typedef struct {
   PEER_STATUS their_status;
   PEER_STATUS our_status;
   u32 bitfield;
-} PeerStatus;
+  struct addrinfo *addr;
+  u16 port;
+} PeerState;
 
 typedef struct {
   u8 length;
@@ -30,8 +34,24 @@ typedef struct {
   u8 peer_id[PEER_ID_LENGTH];
 } PeerHandshakeResponse;
 
+typedef struct {
+  String peer_id;
+  String ip;
+  u16 port;
+} Peer4;
+
+typedef struct {
+  String peer_id;
+  String ip;
+  u16 port;
+} Peer6;
+
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]);
-i32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size);
-i32 peer4Handshake(TorrentPeer, u8 *info_hash, u8 *peer_id);
-i32 peer6Handshake(TorrentPeer6, u8 *info_hash, u8 peer_id[20]);
+i32 peerConnect(i32 fd, char *data, usize data_size);
+i32 peer4Handshake(Peer4, u8 *info_hash, u8 *peer_id);
+i32 peer6Handshake(Peer6, u8 *info_hash, u8 peer_id[20]);
 i32 peerHandshake(void *, u16, u8 *info_hash, u8 *peer_id);
+
+void peerAdd(u8 *peers, usize peer_size, usize peers_count);
+Peer4 peer4Get(u8 *peers, usize idx);
+Peer6 peer6Get(u8 *peers, usize idx);

@@ -11,6 +11,12 @@
 #define IPV4_LEN 4
 #define PORT_LEN 2
 
+#define PORT "6666"
+#define MAX_TRIES 2
+
+#define SHA_DIGEST_LENGTH 20
+#define PEER_ID_LENGTH 20
+
 #define UNREACHABLE(msg)                                       \
   fprintf(stderr,                                              \
           "%s:%u: execution reached a UNREACHABLE line: %s\n", \

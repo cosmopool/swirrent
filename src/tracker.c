@@ -20,20 +20,11 @@
 #include "asio.h"
 #include "core.h"
 #include "log.h"
-#include "peer.h"
 #include "threads.h"
-#include "torrent.h"
 #include "tracker.h"
-
-#define FD_SIZE 400
-#define PORT "6666"
-#define MAX_TRIES 2
 
 static TrackerState trackers[MAX_FD] = {0};
 static i32 fd_to_tracker_idx[MAX_FD] = {0};
-static char data[1024 * 1024] = {0};
-static SwirrentOptions *options = {0};
-static TorrentPeers peers = {0};
 
 TrackerState *trackerStateFromFd(i32 fd) {
   i32 tracker_idx = fd_to_tracker_idx[fd];
@@ -41,81 +32,6 @@ TrackerState *trackerStateFromFd(i32 fd) {
   TrackerState *tracker = trackers + tracker_idx;
   ASSERT((i32)tracker->id == tracker_idx, "must be the same id");
   return tracker;
-}
-
-// simple write callback
-usize write_cb(char *ptr, usize size, usize nmemb, void *userdata) {
-  if (options->verbose) logInfo("----- RESPONSE SIZE: %ld", size * nmemb);
-  if (options->verbose) logInfo("----- RESPONSE DATA: %s", ptr);
-  if (options->dump_response) {
-    FILE *file = fopen(options->raw_request_output_path, "wb");
-    if (file) {
-      // Write some text to the file
-      size_t written = fwrite(ptr, 1, size * nmemb, file);
-      if (written < size * nmemb) {
-        logInfo("Warning: Only wrote %zu of %zu bytes.", written, size * nmemb);
-      }
-    } else {
-      perror("fopen");
-    }
-    // Close the file
-    fclose(file);
-  }
-
-  String *r = (String *)userdata;
-  r->len += size * nmemb;
-  memcpy((void *)r->data, ptr, r->len);
-  return size * nmemb;
-}
-
-void trackerOptionsSet(SwirrentOptions *op) {
-  options = op;
-}
-
-TorrentTrackerResponse trackerHttpResponseDecode(String resp) {
-  TorrentTrackerResponse t_resp = {0};
-  torrentResponseDecode(&resp, &t_resp);
-
-  if (t_resp.warning_message.len > 0 && t_resp.peers.len == 0) {
-    logInfo("----- Skipping tracker with warning_message: %.*s. Trying another one.",
-            (u32)t_resp.warning_message.len, t_resp.warning_message.data);
-    return t_resp;
-  }
-  if (t_resp.failure_reason.len > 0 && t_resp.peers.len == 0) {
-    logInfo("----- Skipping tracker because failed: %.*s. Trying another one.",
-            (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
-    return t_resp;
-  }
-  logInfo("\n===| TRACKER RESPONSE");
-  logInfo("interval: %ld", t_resp.interval);
-  logInfo("min interval: %ld", t_resp.min_interval);
-  logInfo("complete: %ld", t_resp.complete);
-  logInfo("incomplete: %ld", t_resp.incomplete);
-  logInfo("downloaded: %ld", t_resp.downloaded);
-  logInfo("warning_message: %.*s", (u32)t_resp.warning_message.len, t_resp.warning_message.data);
-  logInfo("failure_reason: %.*s", (u32)t_resp.failure_reason.len, t_resp.failure_reason.data);
-  for (u32 i = 0; i < t_resp.peers6.count; i++) {
-    if (i == 0) logInfo("peers6:");
-    TorrentPeer6 peer = torrentPeer6Get(t_resp.peers6.data, i);
-    char ip_buff[INET6_ADDRSTRLEN] = {0};
-    if (!inet_ntop(AF_INET6, peer.ip.data, ip_buff, sizeof(ip_buff))) {
-      logInfo("  (%d)\t failed to parse ipv6: %s", i, strerror(errno));
-      continue;
-    }
-    logInfo("  (%d)\t ip: %s \t | port: %d", i, ip_buff, peer.port);
-  }
-
-  for (u32 i = 0; i < t_resp.peers.len / (IPV4_LEN + PORT_LEN); i++) {
-    if (i == 0) logInfo("peers:");
-    TorrentPeer peer = torrentPeerGet(t_resp.peers.data, i);
-    char ip_buff[INET_ADDRSTRLEN] = {0};
-    if (!inet_ntop(AF_INET, peer.ip.data, ip_buff, sizeof(ip_buff))) {
-      logInfo("  (%d)\t failed to parse ipv4: %s", i, strerror(errno));
-      continue;
-    }
-    logInfo("  (%d)\t ip: %s \t | port: %d", i, ip_buff, peer.port);
-  }
-  return t_resp;
 }
 
 void parse_tracker_url(String url, char *host, size_t host_len, char *port, size_t port_len) {
@@ -190,7 +106,7 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20], u64 now) {
   return 0;
 }
 
-i32 trackerAnnounceFinish(u32 fd) {
+i32 trackerAnnounceFinish(u32 fd, AsioArgs args) {
   logInfo("\tANNOUNCE decoding response");
   u8 buff[2048] = {0};
   TrackerAnnounceResponse *response = (TrackerAnnounceResponse *)buff;
@@ -198,54 +114,38 @@ i32 trackerAnnounceFinish(u32 fd) {
   socklen_t from_len;
   isize bytes_read = recvfrom(fd, response, sizeof(buff), MSG_WAITALL, &from, &from_len);
   if (bytes_read == 0) {
-    logError("\tannounce response: tracker has closed the connection: %s\n", strerror(errno));
+    logError("\ttracker has closed the connection: %s\n", strerror(errno));
     return -1;
   }
   if (bytes_read < 0) {
-    logError("\tannounce response: failed to read tracker response: %s\n", strerror(errno));
+    logError("\tfailed to read tracker response: %s\n", strerror(errno));
     // these errors are timeouts
     assert(errno != EAGAIN && errno != EWOULDBLOCK);
     return -1;
   }
   const isize valid_rc = 20;
   if (bytes_read < valid_rc) {
-    logError("\tannounce response: invalid tracker connect response: wrong length (%ld)\n", bytes_read);
+    logError("\tbad response length (%ld)", bytes_read);
     return -1;
   }
 
   if (be32toh(response->action) != ACTION_ANNOUNCE) {
-    logError("\tannounce response: invalid tracker announce response: wrong action\n");
+    logError("\tbad response action: %d", response->action);
     return -1;
   }
   TrackerState *tracker = trackerStateFromFd(fd);
   if (be32toh(response->transaction_id) != tracker->transaction_id) {
-    logError("\announce response: invalid tracker announce response: wrong transaction id\n");
+    logError("\tbad response transaction id: %d", response->transaction_id);
     return -1;
   }
-  u32 old_len = peers.len;
-  u32 num_peers = (bytes_read - sizeof(*response)) / (IPV4_LEN + PORT_LEN);
-  torrentAddPeers(&peers, response->peers, num_peers);
-  logInfo("\ttracker: interval: %u", be32toh(response->interval));
-  logInfo("\ttracker: leechers: %u", be32toh(response->leechers));
-  logInfo("\ttracker: seeders: %u", be32toh(response->seeders));
-  logInfo("\ttracker: peers count: %lu", num_peers);
-  logInfo("\ttracker: peers len: %lu", bytes_read - sizeof(*response));
-  logInfo("\ttracker: response size: %lu", bytes_read);
-
-  ASSERT(memcmp(peers.data + old_len, response->peers, num_peers * (IPV4_LEN + PORT_LEN)) == 0, "same value");
-  logInfo("");
-  logInfo("===== all available peers:");
-  for (u32 i = 0; i < peers.count; i++) {
-    TorrentPeer peer = torrentPeerGet(peers.data, i);
-    char buf[INET_ADDRSTRLEN] = {0};
-    if (!inet_ntop(AF_INET, peer.ip.data, buf, sizeof(buf))) {
-      logError("\t failed to parse ipv4: %s\n", i, strerror(errno));
-      return -1;
-    }
-    logInfo("\t ip: %s\t | port: %d", buf, peer.port);
-  }
-  logInfo("");
-
+  u32 peers_count = (bytes_read - sizeof(*response)) / (IPV4_LEN + PORT_LEN);
+  logInfo("\tinterval: %u", be32toh(response->interval));
+  logInfo("\tleechers: %u", be32toh(response->leechers));
+  logInfo("\tseeders: %u", be32toh(response->seeders));
+  logInfo("\tpeers count: %lu", peers_count);
+  logInfo("\tpeers byte len: %lu", bytes_read - sizeof(*response));
+  logInfo("\tresponse size: %lu", bytes_read);
+  args.add_peer_callback(response->peers, IPV4_LEN, peers_count);
   return 0;
 }
 
@@ -357,69 +257,6 @@ i32 trackerConnectionFinish(i32 fd) {
   return 0;
 }
 
-TorrentTrackerResponse trackerHttpFetch(CURL *curl, String tracker_url, TorrentMetainfo *metainfo, u8 *peer_id) {
-  assert(tracker_url.data[0] == 'h');
-  assert(tracker_url.data[1] == 't');
-  assert(tracker_url.data[2] == 't');
-  assert(tracker_url.data[3] == 'p');
-
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-
-  usize offset = 0;
-  char url[1024] = {0};
-  offset += snprintf(url, tracker_url.len + 1, "%.*s", (i32)tracker_url.len, tracker_url.data);
-  switch (url[tracker_url.len - 1]) {
-  case '/':
-    assert(url[tracker_url.len] == '\0');
-    url[tracker_url.len - 1] = '?';
-    break;
-
-  default:
-    assert(url[tracker_url.len] == '\0');
-    url[tracker_url.len] = '?';
-    break;
-  }
-
-  usize hash_offset = 0;
-  char encoded_hash[61] = {0};
-  for (int i = 0; i < SHA_DIGEST_LENGTH; ++i) {
-    hash_offset += sprintf(encoded_hash + hash_offset, "%%%02x", (u8)metainfo->info_hash[i]);
-  }
-  offset += snprintf(url + offset, 1024 - offset, "info_hash=%s", encoded_hash);
-  offset += snprintf(url + offset, 1024 - offset, "&peer_id=%s", peer_id);
-  offset += snprintf(url + offset, 1024 - offset, "&port=%s", "6881");
-  offset += snprintf(url + offset, 1024 - offset, "&uploaded=%s", "0");
-  offset += snprintf(url + offset, 1024 - offset, "&downloaded=%s", "0");
-  if (metainfo->info.is_single_file) {
-    offset += snprintf(url + offset, 1024 - offset, "&left=%ld", metainfo->info.length);
-  } else {
-    usize len = 0;
-    for (u32 i = 0; i < metainfo->info.multi_files.count; i++) {
-      len += metainfo->info.multi_files.files[i].length;
-    }
-    offset += snprintf(url + offset, 1024 - offset, "&left=%ld", len);
-  }
-  offset += snprintf(url + offset, 1024 - offset, "&compact=1");
-
-  if (data[0] != '\0') memset(data, 0, 1024 * 1024);
-  String raw_resp = {.len = 0, .data = data};
-  curl_easy_setopt(curl, CURLOPT_URL, url);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &raw_resp);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT, (long)10);
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, (long)10);
-  curl_easy_setopt(curl, CURLOPT_SERVER_RESPONSE_TIMEOUT, (long)5);
-  curl_easy_setopt(curl, CURLOPT_ACCEPTTIMEOUT_MS, (long)10000);
-
-  TorrentTrackerResponse resp = {0};
-  i32 result = curl_easy_perform(curl);
-  if (result != CURLE_OK) {
-    logError("----- Communication with tracker an error occurred: %s\n", curl_easy_strerror(result));
-    return resp;
-  }
-  return trackerHttpResponseDecode(raw_resp);
-}
-
 void freeTrackerState(TrackerState *t) {
   if (t->addr != NULL) freeaddrinfo(t->addr);
   *t = (TrackerState){.action = ACTION_NONE};
@@ -479,7 +316,7 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
     }
 
     tracker->tries = 0;
-    if (trackerAnnounceFinish(fd) < 0) break;
+    if (trackerAnnounceFinish(fd, *args) < 0) break;
     break;
   }
 
@@ -487,8 +324,7 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
   freeTrackerState(tracker);
 }
 
-u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out, u8 peer_id[20]) {
-  (void)out;
+u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH], void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count)) {
   u32 result = 0;
   // CURL *curl = curl_easy_init();
   // if (!curl) {
@@ -497,16 +333,15 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
   //   return 1;
   // }
 
-  AsioArgs asio_args = {.info_hash = metainfo->info_hash, .peer_id = peer_id};
-  peers.data = calloc(5, IPV4_LEN + PORT_LEN);
+  AsioArgs asio_args = {.info_hash = info_hash, .peer_id = peer_id, .add_peer_callback = add_peer_callback};
   isize remaining = 0;
-  for (u32 j = 0; j < metainfo->trackers_count; j++) {
-    String url = metainfo->trackers_url[j];
+  for (u32 j = 0; j < trackers_count; j++) {
+    String url = trackers_url[j];
     logInfo("\n===| tracker (%d) url: %.*s", j, (u32)url.len, url.data);
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
     remaining++;
-    ThreadJob job = {.tracker_id = j, .args = metainfo->trackers_url + j, .callback = trackerResolveAddress};
+    ThreadJob job = {.tracker_id = j, .args = trackers_url + j, .callback = trackerResolveAddress};
     threadsJobEnqueue(job);
   }
 
@@ -534,7 +369,7 @@ u32 trackerPeerListFetch(TorrentMetainfo *metainfo, TorrentTrackerResponse *out,
     trackers[job.tracker_id].id = job.tracker_id;
     trackers[job.tracker_id].addr = job.results;
     trackers[job.tracker_id].action = ACTION_NONE;
-    trackers[job.tracker_id].url = metainfo->trackers_url[job.tracker_id];
+    trackers[job.tracker_id].url = trackers_url[job.tracker_id];
     logInfo("[TRACKER] opening sock for tracker %d", job.tracker_id);
     i32 fd = trackerSockOpen(trackers + job.tracker_id);
     if (fd < 0) {

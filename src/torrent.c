@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "../lib/teeny-sha1.c"
-#include "bencode.h"
 #include "core.h"
 #include "torrent.h"
 
@@ -94,28 +93,6 @@ void torrentMetainfoPrint(TorrentMetainfo metainfo) {
     }
   }
   printf("\n");
-}
-
-TorrentPeer torrentPeerGet(const char *peers, usize idx) {
-  const char *entry = peers + idx * (IPV4_LEN + PORT_LEN);
-  return (TorrentPeer){
-      .ip = {
-          .data = (const char *)entry,
-          .len = IPV4_LEN,
-      },
-      .port = ((u8)entry[IPV4_LEN] << 8) | (u8)entry[IPV4_LEN + 1],
-  };
-}
-
-TorrentPeer6 torrentPeer6Get(const char *peers, usize idx) {
-  const char *entry = peers + idx * (IPV6_LEN + PORT_LEN);
-  return (TorrentPeer6){
-      .ip = {
-          .data = (const char *)entry,
-          .len = IPV6_LEN,
-      },
-      .port = ((u8)entry[IPV6_LEN] << 8) | (u8)entry[IPV6_LEN + 1],
-  };
 }
 
 void bencodeFileDecode(BencodeParser *parser, TorrentInfoFiles *files) {
