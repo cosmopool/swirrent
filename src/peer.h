@@ -22,6 +22,14 @@ typedef struct {
   u32 bitfield;
 } PeerStatus;
 
+typedef struct {
+  u8 length;
+  u8 protocol_str[19];
+  u8 reserved[8];
+  u8 info_hash[SHA_DIGEST_LENGTH];
+  u8 peer_id[PEER_ID_LENGTH];
+} PeerHandshakeResponse;
+
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]);
 i32 peerConnect(i32 fd, struct sockaddr *sock, usize sock_size, char *data, usize data_size);
 i32 peer4Handshake(TorrentPeer, u8 *info_hash, u8 *peer_id);

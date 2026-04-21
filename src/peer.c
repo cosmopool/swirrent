@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "core.h"
 #include "log.h"
 #include "peer.h"
 #include "torrent.h"
@@ -55,18 +56,6 @@ void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) 
   memcpy(handshake_buff + offset, peer_id, PEER_ID_LENGTH);
   offset += PEER_ID_LENGTH;
   assert(offset == 68);
-  FILE *file = fopen("handshake", "wb");
-  if (file) {
-    // Write some text to the file
-    size_t written = fwrite(handshake_buff, 1, 68, file);
-    if (written < 68) {
-      logInfo("Warning: Only wrote %zu of 68 bytes.", written);
-    }
-  } else {
-    perror("fopen");
-  }
-  // Close the file
-  if (file) fclose(file);
 }
 
 i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
@@ -77,11 +66,11 @@ i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
     return fd;
   }
 
-  struct sockaddr_in sock = {
+  struct sockaddr_in peer_addr = {
       .sin_port = htobe16(port),
       .sin_family = AF_INET,
   };
-  i32 r = inet_pton(AF_INET, ip, &(sock.sin_addr));
+  i32 r = inet_pton(AF_INET, ip, &(peer_addr.sin_addr));
   if (r == 0) {
     logError("invalid ip format: %s", ip);
     result = r;
@@ -94,7 +83,7 @@ i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
   }
 
   logInfo("connecting with peer");
-  u32 c = connect(fd, (struct sockaddr *)&sock, sizeof(sock));
+  u32 c = connect(fd, (struct sockaddr *)&peer_addr, sizeof(peer_addr));
   if (c != 0) {
     logError("connection with peer failed: %s", strerror(errno));
     result = c;
@@ -106,20 +95,50 @@ i32 peerHandshake(void *ip, u16 port, u8 *info_hash, u8 *peer_id) {
   peerHandshakeGenerate(info_hash, peer_id, handshake_buff);
 
   logInfo("sending handshake");
-  if (write(fd, handshake_buff, sizeof(handshake_buff)) < 0) {
+  isize bytes_sent = 0;
+  if ((bytes_sent = send(fd, handshake_buff, sizeof(handshake_buff), 0)) < 0) {
     logError("failed to send handshake to peer: %s", strerror(errno));
+    result = -1;
+    goto cleanup;
+  }
+  if ((usize)bytes_sent < sizeof(handshake_buff)) {
+    logError("failed to send whole handshake data: %s", bytes_sent);
     result = -1;
     goto cleanup;
   }
 
   logInfo("waiting response from peer");
-  char resp_buff[1024] = {0};
-  if (read(fd, resp_buff, sizeof(resp_buff) - 1) < 0) {
+  u8 buff[1024] = {0};
+  isize bytes_read = 0;
+  if ((bytes_read = recv(fd, buff, sizeof(buff), 0)) < 0) {
     logError("failed to read peer response: %s", strerror(errno));
     result = -1;
     goto cleanup;
   }
-  logInfo("peer response: %s", resp_buff);
+  logInfo("finished reading response: %d bytes", bytes_read);
+  if (strlen((char *)buff) == 0) {
+    logError("peer closed the connection");
+    result = -1;
+    goto cleanup;
+  }
+  PeerHandshakeResponse hr;
+  usize offset = 0;
+  hr.length = buff[offset];
+  assert(hr.length == 19);
+  offset += 1;
+  memcpy(hr.protocol_str, buff + offset, 19);
+  assert(memcmp(hr.protocol_str, "BitTorrent protocol", 19) == 0);
+  offset += 19;
+  memcpy(hr.reserved, buff + offset, 8);
+  // assert(memcmp(hr.reserved, "", 8) == 0);
+  offset += 8;
+  memcpy(hr.info_hash, buff + offset, SHA_DIGEST_LENGTH);
+  assert(memcmp(hr.info_hash, info_hash, SHA_DIGEST_LENGTH) == 0);
+  offset += SHA_DIGEST_LENGTH;
+  memcpy(hr.peer_id, buff + offset, PEER_ID_LENGTH);
+  // assert(memcmp(hr.peer_id, peer_id, PEER_ID_LENGTH) == 0);
+  logInfo("\tinfo hash: 0x%02X", hr.info_hash);
+  logInfo("\t  peer id: 0x%02X", hr.peer_id);
 
 cleanup:
   logInfo("closing socket (%d)", fd);
