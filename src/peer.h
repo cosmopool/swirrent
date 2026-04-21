@@ -38,20 +38,12 @@ typedef struct {
   String peer_id;
   String ip;
   u16 port;
-} Peer4;
-
-typedef struct {
-  String peer_id;
-  String ip;
-  u16 port;
-} Peer6;
+} Peer;
 
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]);
 i32 peerConnect(i32 fd, char *data, usize data_size);
-i32 peer4Handshake(Peer4, u8 *info_hash, u8 *peer_id);
-i32 peer6Handshake(Peer6, u8 *info_hash, u8 peer_id[20]);
+i32 peer6Handshake(Peer, u8 *info_hash, u8 peer_id[20]);
 i32 peerHandshake(void *, u16, u8 *info_hash, u8 *peer_id);
 
 void peerAdd(u8 *peers, usize peer_size, usize peers_count);
-Peer4 peer4Get(u8 *peers, usize idx);
-Peer6 peer6Get(u8 *peers, usize idx);
+Peer peerGet(u8 *peers, usize idx, usize len);
