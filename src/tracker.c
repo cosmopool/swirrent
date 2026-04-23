@@ -223,7 +223,8 @@ i32 trackerConnectionStart(i32 fd, u64 now) {
 
 i32 trackerConnectionFinish(i32 fd) {
   logInfo("\tCONNECT decoding response");
-  TrackerConnectResponse *response = malloc(1024);
+  u8 buf[1024] = {0};
+  TrackerConnectResponse *response = (TrackerConnectResponse *)buf;
   struct sockaddr_storage from;
   socklen_t from_len = sizeof(from);
   isize bytes_read = recvfrom(fd, response, sizeof(*response), MSG_WAITALL, (struct sockaddr *)&from, &from_len);
