@@ -66,7 +66,7 @@ EOF
 # --- test payload + torrent ----------------------------------------------
 if [[ ! -f seed/test.bin ]]; then
   echo "[+] creating ${FILE_SIZE_MB}MiB random payload"
-  dd if=/dev/urandom of=seed/test.bin bs=1m count="$FILE_SIZE_MB" status=none
+  dd if=/dev/urandom of=seed/test.bin bs=1M count="$FILE_SIZE_MB" status=none
 fi
 
 TORRENT="$WORKDIR/test.torrent"
