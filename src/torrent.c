@@ -49,14 +49,13 @@ void torrentMetainfoCleanup(TorrentMetainfo *mi) {
   if (mi->info.is_single_file) {
     assert(!mi->info.multi_files.paths);
     assert(mi->info.multi_files.count == 0);
-    return;
+  } else {
+    assert(mi->info.multi_files.files);
+    free(mi->info.multi_files.files);
+
+    assert(mi->info.multi_files.paths);
+    free(mi->info.multi_files.paths);
   }
-
-  assert(mi->info.multi_files.files);
-  free(mi->info.multi_files.files);
-
-  assert(mi->info.multi_files.paths);
-  free(mi->info.multi_files.paths);
 
   free(mi);
 }
