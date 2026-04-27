@@ -68,11 +68,13 @@ void asioWaitForEvents() {
       if (!has_callback) continue;
 
       if (pfds[i].revents & (pfds[i].events)) {
+        ASSERT_VALID_FD(fd);
         pfds_ctx[i].on_ready_callback(fd, now, ASIO_READY, pfds_ctx[i].args);
         continue;
       }
 
       if (pfds_ctx[i].has_timeout_expired_callback(fd, now)) {
+        ASSERT_VALID_FD(fd);
         pfds_ctx[i].on_ready_callback(fd, now, ASIO_TIMEOUT, pfds_ctx[i].args);
         continue;
       }
