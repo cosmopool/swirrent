@@ -162,3 +162,10 @@ static inline void hexdump(const char *format, u8 *data, u64 len, u8 breakline) 
   }
   printf("\n");
 }
+
+static inline void generatePeerId(u8 *buf) {
+  const char *prefix = "SW-0001-";
+  usize size = strlen(prefix);
+  memcpy(buf, prefix, size);
+  for (int i = size; i < 20; i++) buf[i] = rand() & 0xff;
+}

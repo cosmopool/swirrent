@@ -41,9 +41,8 @@ void swirrentShutdown(SwirrentContext *ctx) {
 void swirrentHandshake(SwirrentContext *ctx) {
   logInfo("target peer: %s", ctx->options.peer_address);
   logInfo("performing peer handshake");
-  u8 peer_id[20] = {"-MY0001-"};
-  for (int i = 8; i < 20; i++)
-    peer_id[i] = rand() & 0xff;
+  u8 peer_id[20] = {0};
+  generatePeerId(peer_id);
   logInfo("current peer id: %s", peer_id);
 
   u8 ip_str[INET_ADDRSTRLEN] = {0};
@@ -107,10 +106,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
   }
 
   u8 peer_id[20] = {0};
-  // 8-byte prefix: Azureus-style "-MY0001-"
-  memcpy(peer_id, "-MY0001-", 8);
-  for (int i = 8; i < 20; i++)
-    peer_id[i] = rand() & 0xff;
+  generatePeerId(peer_id);
 
   bool was_raw_request_loaded = ctx->options.raw_request_path != 0;
   if (was_raw_request_loaded) {
