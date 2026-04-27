@@ -23,6 +23,12 @@
 #include "threads.h"
 #include "tracker.h"
 
+typedef struct {
+  u8 *info_hash;
+  u8 *peer_id;
+  add_peer_callback add_callback;
+} AsioArgs;
+
 static TrackerState trackers[MAX_FD] = {0};
 static i32 fd_to_tracker_idx[MAX_FD] = {0};
 
@@ -145,7 +151,7 @@ i32 trackerAnnounceFinish(u32 fd, AsioArgs args) {
   logInfo("\tpeers count: %lu", peers_count);
   logInfo("\tpeers byte len: %lu", bytes_read - sizeof(*response));
   logInfo("\tresponse size: %lu", bytes_read);
-  args.add_peer_callback(response->peers, IPV4_LEN, peers_count);
+  args.add_callback(response->peers, IPV4_LEN, peers_count, args.info_hash, args.peer_id);
   return 0;
 }
 
@@ -325,7 +331,7 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
   freeTrackerState(tracker);
 }
 
-u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH], void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count)) {
+u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback) {
   u32 result = 0;
   // CURL *curl = curl_easy_init();
   // if (!curl) {
@@ -334,7 +340,7 @@ u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_has
   //   return 1;
   // }
 
-  AsioArgs asio_args = {.info_hash = info_hash, .peer_id = peer_id, .add_peer_callback = add_peer_callback};
+  AsioArgs asio_args = {.info_hash = info_hash, .peer_id = peer_id, .add_callback = add_callback};
   isize remaining = 0;
   for (u32 j = 0; j < trackers_count; j++) {
     String url = trackers_url[j];

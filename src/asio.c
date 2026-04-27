@@ -34,13 +34,11 @@ void asioFdUnset(i32 fd) {
 }
 
 void asioUnsetAll() {
-  isize remaning = num_pfds;
   for (i32 i = 0; i < MAX_FD; i++) {
-    if (remaning < 0) return;
-    if (pfds[i].fd <= 0) continue;
-    asioFdUnset(i);
-    remaning--;
+    pfds[i] = (struct pollfd){0};
+    pfds_ctx[i] = (AsioFd){0};
   }
+  num_pfds = 0;
 }
 
 void asioWaitForEvents() {

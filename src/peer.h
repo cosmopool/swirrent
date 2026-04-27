@@ -10,7 +10,13 @@
 
 #include "core.h"
 
-typedef enum {
+typedef enum : u8 {
+  PEER_CONN_NONE,
+  PEER_CONN_SENT,
+  PEER_CONN_CONNECTED,
+} PEER_CONN;
+
+typedef enum : u8 {
   CHOKED,
   UNCHOKED,
   INTERESTED,
@@ -18,12 +24,23 @@ typedef enum {
   NONE,
 } PEER_STATUS;
 
+typedef enum : u8 {
+  MESSAGE_CHOKE,
+  MESSAGE_UNCHOKE,
+  MESSAGE_INTERESTED,
+  MESSAGE_NOT_INTERESTED,
+  MESSAGE_HAVE,
+  MESSAGE_BITFIELD,
+  MESSAGE_REQUEST,
+  MESSAGE_PIECE,
+  MESSAGE_CANCEL,
+} PEER_MESSAGE;
+
 typedef struct {
   PEER_STATUS their_status;
   PEER_STATUS our_status;
-  u32 bitfield;
-  struct addrinfo *addr;
-  u16 port;
+  PEER_CONN conn_status;
+  u64 bitfield;
 } PeerState;
 
 typedef struct {
@@ -40,10 +57,6 @@ typedef struct {
   u16 port;
 } Peer;
 
-void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]);
-i32 peerConnect(i32 fd, char *data, usize data_size);
-i32 peer6Handshake(Peer, u8 *info_hash, u8 peer_id[20]);
-i32 peerHandshake(void *, u16, u8 *info_hash, u8 *peer_id);
-
-void peerAdd(u8 *peers, usize peer_size, usize peers_count);
-Peer peerGet(u8 *peers, usize idx, usize len);
+void peerAdd(u8 *ip, u16 port, usize len, u8 *info_hash, u8 *peer_id);
+void peerAddMany(u8 *peers, usize peer_len, usize count, u8 *info_hash, u8 *peer_id);
+void peerLoop(void);

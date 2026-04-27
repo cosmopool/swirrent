@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asio.h"
 #include "bencode.h"
 #include "core.h"
 #include "log.h"
@@ -54,11 +55,17 @@ void swirrentHandshake(SwirrentContext *ctx) {
     i++;
   }
 
-  u16 port = atoi(ctx->options.peer_address + i + 1);
-  if (peerHandshake(ip_str, port, ctx->metainfo->info_hash, peer_id) < 0) {
-    printf("failed to perform handshake with peer");
-    return;
-  }
+  struct sockaddr_in peer_addr = {
+      .sin_port = atoi(ctx->options.peer_address + i + 1),
+      .sin_family = AF_INET,
+  };
+  i32 r = inet_pton(AF_INET, (const char *)ip_str, &(peer_addr.sin_addr));
+  if (r == 0) return logError("invalid ip format: %s", ip_str);
+  if (r < 0) return logError("invalid ip: %s", strerror(errno));
+  logInfo("pieces: %lu", ctx->metainfo->info.pieces_count);
+  peerAdd((u8 *)&peer_addr.sin_addr, peer_addr.sin_port, IPV4_LEN, ctx->metainfo->info_hash, peer_id);
+  asioWaitForEvents();
+  // peerLoop();
 }
 
 i32 swirrentDecodeMetainfo(SwirrentContext *ctx) {
@@ -124,7 +131,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
     logInfo("no dump response. starting fresh.");
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
     // no raw request was load, so we will talk to trackers for peers
-    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo->info_hash, peer_id, peerAdd);
+    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo->info_hash, peer_id, peerAddMany);
     logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
   }

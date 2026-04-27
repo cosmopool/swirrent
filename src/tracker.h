@@ -60,12 +60,6 @@ typedef struct {
 } __attribute__((packed)) TrackerAnnounceResponse;
 
 typedef struct {
-  u8 *info_hash;
-  u8 *peer_id;
-  void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count);
-} AsioArgs;
-
-typedef struct {
   u32 id;
   usize last_try;
   u64 connection_id;
@@ -132,5 +126,7 @@ typedef struct {
   TrackerEvent event;
 } Tracker;
 
+typedef void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count, u8 *info_hash, u8 *peer_id);
+
 u32 trackerPeerListFetch(String *urls, usize count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH],
-                         void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count));
+                         add_peer_callback add_callback);

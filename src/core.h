@@ -151,3 +151,14 @@ inline void mclExitMsg(u32 exit_code, const char *fmt, ...) {
 
   exit(exit_code);
 }
+
+// ---------- Utils
+
+static inline void hexdump(const char *format, u8 *data, u64 len, u8 breakline) {
+  for (u64 i = 0; i < len; i++) {
+    printf(format, data[i]);
+    if (!breakline) continue;
+    if ((i + 1) % 16 == 0) printf("\n");
+  }
+  printf("\n");
+}
