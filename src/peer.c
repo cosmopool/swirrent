@@ -226,7 +226,7 @@ void peerAdd(u8 *ip, u16 port, usize len, u8 *info_hash, u8 *peer_id) {
       .sin_port = htobe16(port),
       .sin_family = af,
   };
-  memcpy(&peers_addr[peers_count].sin_addr, ip, len);
+  memcpy(&addr.sin_addr, ip, len);
 
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
