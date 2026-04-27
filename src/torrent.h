@@ -50,6 +50,7 @@ typedef struct TorrentInfo {
   // subdivided into strings of length 20, each of which is the SHA1 hash of the
   // piece at the corresponding index.
   String pieces;
+  u64 pieces_count;
 
   union {
     // length - The length of the file, in bytes.

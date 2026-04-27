@@ -71,7 +71,7 @@ void torrentMetainfoPrint(TorrentMetainfo metainfo) {
   printf("\n");
   printf("info hash: %s \n", metainfo.info_hash);
   printf("piece length: %ldK\n", metainfo.info.piece_length / 1024);
-  printf("pieces: %lu\n", metainfo.info.pieces.len / 20);
+  printf("pieces count: %llu\n", metainfo.info.pieces_count);
   if (metainfo.info.is_single_file)
     printf("length: %ldM\n", metainfo.info.length / 1024 / 1024);
 
@@ -324,6 +324,7 @@ void torrentInfoHashGenerate(TorrentMetainfo *metainfo) {
 
   buff_slice = bencodeDictKeyEncode("pieces", buff_slice);
   buff_slice = bencodeStringEncode(metainfo->info.pieces, buff_slice);
+  metainfo->info.pieces_count = metainfo->info.pieces.len / SHA_DIGEST_LENGTH;
 
   buff_slice = bencodeDictCloseEncode(buff_slice, "info"); // info dict
 
