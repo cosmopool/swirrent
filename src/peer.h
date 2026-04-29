@@ -9,6 +9,7 @@
 #endif
 
 #include "core.h"
+#include "metainfo.h"
 
 typedef enum : u8 {
   CONN_NONE,
@@ -40,7 +41,6 @@ typedef struct {
   PeerStatus their_status;
   PeerStatus our_status;
   PeerConn conn_status;
-  u64 bitfield;
 } PeerState;
 
 typedef struct {
@@ -57,6 +57,6 @@ typedef struct {
   u16 port;
 } Peer;
 
-void peerAdd(u8 *ip, u16 port, usize len, u8 *info_hash, u8 *peer_id);
-void peerAddMany(u8 *peers, usize peer_len, usize count, u8 *info_hash, u8 *peer_id);
+void peerAdd(u8 *ip, u16 port, usize len, TorrentMetainfo *metainfo, u8 *peer_id);
+void peerAddMany(u8 *peers, usize peer_len, usize count, TorrentMetainfo *metainfo, u8 *peer_id);
 void peerLoop(void);

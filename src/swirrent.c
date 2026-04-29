@@ -43,7 +43,8 @@ void swirrentHandshake(SwirrentContext *ctx) {
   logInfo("performing peer handshake");
   u8 peer_id[20] = {0};
   generatePeerId(peer_id);
-  logInfo("current peer id: %s", peer_id);
+  printf("current peer id: ");
+  hexdump("%02x", peer_id, SHA_DIGEST_LENGTH, false);
 
   u8 ip_str[INET_ADDRSTRLEN] = {0};
   u8 c;
@@ -127,7 +128,7 @@ i32 swirrentMain(SwirrentContext *ctx) {
     logInfo("no dump response. starting fresh.");
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
     // no raw request was load, so we will talk to trackers for peers
-    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo->info_hash, peer_id, peerAddMany);
+    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo, peer_id, peerAddMany);
     logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
   }

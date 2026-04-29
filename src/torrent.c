@@ -333,7 +333,8 @@ void torrentInfoHashGenerate(TorrentMetainfo *metainfo) {
     exit(1);
   }
 
-  printf("SHA1: %s\n", metainfo->info_hash);
+  printf("SHA1: ");
+  hexdump("%02x", metainfo->info_hash, SHA_DIGEST_LENGTH, false);
 }
 
 u32 torrentResponseDecode(String *raw_resp, TorrentTrackerResponse *resp) {

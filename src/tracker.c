@@ -1,3 +1,4 @@
+#include "metainfo.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <curl/curl.h>
@@ -24,7 +25,7 @@
 #include "tracker.h"
 
 typedef struct {
-  u8 *info_hash;
+  TorrentMetainfo *metainfo;
   u8 *peer_id;
   add_peer_callback add_callback;
 } AsioArgs;
@@ -74,7 +75,7 @@ void parse_tracker_url(String url, char *host, size_t host_len, char *port, size
   }
 }
 
-i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20], u64 now) {
+i32 trackerAnnounceStart(TorrentMetainfo *metainfo, u32 fd, u8 peer_id[20], u64 now) {
   TrackerState *ts = trackerStateFromFd(fd);
   ts->tries++;
   ts->last_try = now;
@@ -99,7 +100,7 @@ i32 trackerAnnounceStart(u8 info_hash[20], u32 fd, u8 peer_id[20], u64 now) {
       .num_want = htobe32(-1),
       .port = htobe16(ts->port),
   };
-  memcpy(request.info_hash, info_hash, 20);
+  memcpy(request.info_hash, metainfo->info_hash, 20);
   memcpy(request.peer_id, peer_id, 20);
   ts->transaction_id = be32toh(request.transaction_id);
 
@@ -151,7 +152,7 @@ i32 trackerAnnounceFinish(u32 fd, AsioArgs args) {
   logInfo("\tpeers count: %lu", peers_count);
   logInfo("\tpeers byte len: %lu", bytes_read - sizeof(*response));
   logInfo("\tresponse size: %lu", bytes_read);
-  args.add_callback(response->peers, IPV4_LEN, peers_count, args.info_hash, args.peer_id);
+  args.add_callback(response->peers, IPV4_LEN, peers_count, args.metainfo, args.peer_id);
   return 0;
 }
 
@@ -313,12 +314,12 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
     tracker->tries = 0;
     if (trackerConnectionFinish(fd) < 0) break;
 
-    if (trackerAnnounceStart(args->info_hash, fd, args->peer_id, now) < 0) break;
+    if (trackerAnnounceStart(args->metainfo, fd, args->peer_id, now) < 0) break;
     return;
 
   case ACTION_ANNOUNCE:
     if (asio_status == ASIO_TIMEOUT) {
-      if (trackerAnnounceStart(args->info_hash, fd, args->peer_id, now) < 0) break;
+      if (trackerAnnounceStart(args->metainfo, fd, args->peer_id, now) < 0) break;
       return;
     }
 
@@ -331,7 +332,7 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
   freeTrackerState(tracker);
 }
 
-u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback) {
+u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback) {
   u32 result = 0;
   // CURL *curl = curl_easy_init();
   // if (!curl) {
@@ -340,7 +341,7 @@ u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, u8 info_has
   //   return 1;
   // }
 
-  AsioArgs asio_args = {.info_hash = info_hash, .peer_id = peer_id, .add_callback = add_callback};
+  AsioArgs asio_args = {.metainfo = metainfo, .peer_id = peer_id, .add_callback = add_callback};
   isize remaining = 0;
   for (u32 j = 0; j < trackers_count; j++) {
     String url = trackers_url[j];

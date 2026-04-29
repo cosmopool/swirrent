@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 
 #include "core.h"
+#include "metainfo.h"
 
 #define ANNOUNCE_SIZE 98
 #define CONNECT_REQUEST_SIZE 16
@@ -126,7 +127,6 @@ typedef struct {
   TrackerEvent event;
 } Tracker;
 
-typedef void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count, u8 *info_hash, u8 *peer_id);
+typedef void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count, TorrentMetainfo *metainfo, u8 *peer_id);
 
-u32 trackerPeerListFetch(String *urls, usize count, u8 info_hash[SHA_DIGEST_LENGTH], u8 peer_id[PEER_ID_LENGTH],
-                         add_peer_callback add_callback);
+u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback);
