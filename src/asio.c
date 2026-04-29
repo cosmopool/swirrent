@@ -51,7 +51,7 @@ void asioWaitForEvents() {
     }
     logInfo("[ASIO] pending pfds: %lu, ready: %d", num_pfds, poll_count);
     if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {
-      logError("[TRACKER] error fetching current time: %s", strerror(errno));
+      logError("[ASIO] error fetching current time: %s", strerror(errno));
       continue;
     }
     u64 now = ts.tv_sec;
@@ -62,15 +62,13 @@ void asioWaitForEvents() {
       bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
       if (is_empty_pfd) continue;
 
-      bool has_callback = pfds_ctx[i].on_ready_callback != NULL;
-      if (!has_callback) continue;
-
       if (pfds[i].revents & (pfds[i].events)) {
         ASSERT_VALID_FD(fd);
         pfds_ctx[i].on_ready_callback(fd, now, ASIO_READY, pfds_ctx[i].args);
         continue;
       }
 
+      if (pfds_ctx[i].has_timeout_expired_callback == NULL) continue;
       if (pfds_ctx[i].has_timeout_expired_callback(fd, now)) {
         ASSERT_VALID_FD(fd);
         pfds_ctx[i].on_ready_callback(fd, now, ASIO_TIMEOUT, pfds_ctx[i].args);
