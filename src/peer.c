@@ -27,7 +27,12 @@ typedef struct {
 static PeerState peers_state[MAX_FD] = {0};
 static struct sockaddr_in peers_addr[MAX_FD] = {0};
 static AsioArgs peers_args[MAX_FD] = {0};
+static u8 peers_bitfield[(MAX_FD * MAX_PEERS) / 8] = {0};
+// static u8 mine_bitfield[(MAX_FD * MAX_PEERS) / 8] = {0};
+static u16 pieces_availability[(MAX_FD * MAX_PEERS) / 8] = {0};
 static u32 peers_count = 0;
+static u32 rarest_piece_availability = 0;
+static u32 rarest_piece_idx = (MAX_FD * MAX_PEERS) + 1;
 
 const char *peerMessageToString(PeerMessage msg) {
   switch (msg) {
@@ -58,7 +63,7 @@ void peerRemove(u32 fd, u32 idx) {
   asioFdUnset(fd);
 }
 
-void peerRead(u32 fd, u32 idx, u8 *buff, u64 pieces_count) {
+void peerRead(u32 fd, u32 peer_idx, u8 *buff, u64 pieces_count) {
   u32 msg_offset = 0;
   u32 length = (buff[0] << 24) | (buff[1] << 16) | (buff[2] << 8) | buff[3];
   // u32 prefix = 0;
@@ -67,21 +72,33 @@ void peerRead(u32 fd, u32 idx, u8 *buff, u64 pieces_count) {
   msg_offset += 4;
   PeerMessage message = buff[msg_offset];
   msg_offset++;
-  logInfo("(%d) message length: %d, type: %s", idx, length, peerMessageToString(message));
+  logInfo("(%d) message length: %d, type: %s", peer_idx, length, peerMessageToString(message));
   switch (message) {
   case MESSAGE_CHOKE: return logInfo("choke");
   case MESSAGE_UNCHOKE: return logInfo("unchoke");
   case MESSAGE_INTERESTED: return logInfo("interested");
   case MESSAGE_NOT_INTERESTED: return logInfo("not interested");
   case MESSAGE_HAVE: return logInfo("have");
-  case MESSAGE_BITFIELD: {
+  case MESSAGE_BITFIELD:
+    assert(pieces_count / 8 == length - 1);
+    for (u32 byte = 0; byte < length - 1; byte++) {
+      // save peer bitfield
+      peers_bitfield[(peer_idx * pieces_count) + byte] = buff[msg_offset + byte];
+      // calculate piece availability
+      for (u32 bit = 0; bit < 8; bit++) {
+        u32 piece_idx = (byte * 8) + bit;
+        pieces_availability[piece_idx]++;
+        if (rarest_piece_availability >= pieces_availability[piece_idx]) continue;
+        rarest_piece_idx = piece_idx;
+        rarest_piece_availability = pieces_availability[piece_idx];
+      }
+    }
     break;
-  }
   case MESSAGE_REQUEST: return logInfo("request");
   case MESSAGE_PIECE: return logInfo("piece");
   case MESSAGE_CANCEL: return logInfo("cancel");
+  default: return logError("(%d) unrecognized message type: %d - will ignore it!", peer_idx, message);
   }
-  return;
 }
 
 void peerListen(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMetainfo *metainfo) {
@@ -177,6 +194,7 @@ void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMet
   assert(memcmp(hr.info_hash, metainfo->info_hash, SHA_DIGEST_LENGTH) == 0);
   offset += SHA_DIGEST_LENGTH;
   memcpy(hr.peer_id, buff + offset, PEER_ID_LENGTH);
+  offset += PEER_ID_LENGTH;
   // assert(memcmp(hr.peer_id, peer_id, PEER_ID_LENGTH) == 0);
   printf("(%d) info hash: ", idx);
   hexdump("%02x", hr.info_hash, SHA_DIGEST_LENGTH, false);
@@ -186,7 +204,7 @@ void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMet
   if (bytes_read <= 68) return;
   printf("(%d) full response dump: \n", idx);
   hexdump("%02X ", buff, bytes_read, true);
-  return peerRead(fd, idx, buff + 68);
+  return peerRead(fd, idx, buff + offset, metainfo->info.pieces_count);
 }
 
 void peerResolveState(i32 fd, u64 now, ASIO_STATUS status, void *args) {

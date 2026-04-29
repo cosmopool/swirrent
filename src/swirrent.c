@@ -63,7 +63,7 @@ void swirrentHandshake(SwirrentContext *ctx) {
   if (r == 0) return logError("invalid ip format: %s", ip_str);
   if (r < 0) return logError("invalid ip: %s", strerror(errno));
   logInfo("pieces: %lu", ctx->metainfo->info.pieces_count);
-  peerAdd((u8 *)&peer_addr.sin_addr, peer_addr.sin_port, IPV4_LEN, ctx->metainfo->info_hash, peer_id);
+  peerAdd((u8 *)&peer_addr.sin_addr, peer_addr.sin_port, IPV4_LEN, ctx->metainfo, peer_id);
   asioWaitForEvents();
   // peerLoop();
 }

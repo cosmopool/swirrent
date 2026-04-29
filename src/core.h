@@ -17,6 +17,8 @@
 #define SHA_DIGEST_LENGTH 20
 #define PEER_ID_LENGTH 20
 
+#define MAX_PEERS 128
+
 #define UNREACHABLE(msg)                                       \
   fprintf(stderr,                                              \
           "%s:%u: execution reached a UNREACHABLE line: %s\n", \
