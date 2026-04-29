@@ -11,18 +11,18 @@
 #include "core.h"
 
 typedef enum : u8 {
-  PEER_CONN_NONE,
-  PEER_CONN_SENT,
-  PEER_CONN_CONNECTED,
-} PEER_CONN;
+  CONN_NONE,
+  CONN_SENT,
+  CONN_CONNECTED,
+} PeerConn;
 
 typedef enum : u8 {
-  CHOKED,
-  UNCHOKED,
-  INTERESTED,
-  NOT_INTERESTED,
-  NONE,
-} PEER_STATUS;
+  STATUS_CHOKED,
+  STATUS_UNCHOKED,
+  STATUS_INTERESTED,
+  STATUS_NOT_INTERESTED,
+  STATUS_NONE,
+} PeerStatus;
 
 typedef enum : u8 {
   MESSAGE_CHOKE,
@@ -34,12 +34,12 @@ typedef enum : u8 {
   MESSAGE_REQUEST,
   MESSAGE_PIECE,
   MESSAGE_CANCEL,
-} PEER_MESSAGE;
+} PeerMessage;
 
 typedef struct {
-  PEER_STATUS their_status;
-  PEER_STATUS our_status;
-  PEER_CONN conn_status;
+  PeerStatus their_status;
+  PeerStatus our_status;
+  PeerConn conn_status;
   u64 bitfield;
 } PeerState;
 

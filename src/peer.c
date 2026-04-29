@@ -28,7 +28,7 @@ static struct sockaddr_in peers_addr[MAX_FD] = {0};
 static AsioArgs peers_args[MAX_FD] = {0};
 static u32 peers_count = 0;
 
-const char *peerMessageToString(PEER_MESSAGE msg) {
+const char *peerMessageToString(PeerMessage msg) {
   switch (msg) {
   case MESSAGE_CHOKE: return "choke";
   case MESSAGE_UNCHOKE: return "unchoke";
@@ -64,7 +64,7 @@ void peerRead(u32 fd, u32 idx, u8 *buff) {
   // memcpy((u8 *)&prefix, buff, sizeof(prefix));
   // prefix = be32toh(prefix);
   msg_offset += 4;
-  PEER_MESSAGE message = buff[msg_offset];
+  PeerMessage message = buff[msg_offset];
   msg_offset++;
   logInfo("message length: %d, type: %s", length, peerMessageToString(message));
   switch (message) {
@@ -145,7 +145,7 @@ void peerHandshakeSend(u32 fd, u32 idx, struct sockaddr_in peer_addr, u8 *info_h
     peerRemove(fd, idx);
     return logError("failed to send whole handshake data: %s", bytes_sent);
   }
-  peers_state[idx].conn_status = PEER_CONN_SENT;
+  peers_state[idx].conn_status = CONN_SENT;
 }
 
 void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, u8 *info_hash) {
@@ -181,7 +181,7 @@ void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, u8 *info_h
   hexdump("%02x", hr.info_hash, SHA_DIGEST_LENGTH, false);
   printf("  peer id: ");
   hexdump("%02x", hr.peer_id, PEER_ID_LENGTH, false);
-  peers_state[idx].conn_status = PEER_CONN_CONNECTED;
+  peers_state[idx].conn_status = CONN_CONNECTED;
   if (bytes_read <= 68) return;
   printf("full response dump: \n");
   hexdump("%02X ", buff, bytes_read, true);
@@ -196,9 +196,9 @@ void peerResolveState(i32 fd, u64 now, ASIO_STATUS status, void *args) {
   PeerState state = peers_state[a->idx];
   struct sockaddr_in addr = peers_addr[a->idx];
   switch (state.conn_status) {
-  case PEER_CONN_NONE: return peerHandshakeSend(fd, a->idx, addr, a->info_hash, a->peer_id);
-  case PEER_CONN_SENT: return peerHandshakeRead(fd, a->idx, addr, a->info_hash);
-  case PEER_CONN_CONNECTED: return peerListen(fd, a->idx, addr);
+  case CONN_NONE: return peerHandshakeSend(fd, a->idx, addr, a->info_hash, a->peer_id);
+  case CONN_SENT: return peerHandshakeRead(fd, a->idx, addr, a->info_hash);
+  case CONN_CONNECTED: return peerListen(fd, a->idx, addr);
   }
 }
 
@@ -238,7 +238,7 @@ void peerAdd(u8 *ip, u16 port, usize len, u8 *info_hash, u8 *peer_id) {
   }
   logInfo("\t ip: %s\t | port: %d", buf, be16toh(addr.sin_port));
   peers_addr[peers_count] = addr;
-  peers_state[peers_count] = (PeerState){.our_status = NONE, .their_status = NONE};
+  peers_state[peers_count] = (PeerState){.our_status = STATUS_NONE, .their_status = STATUS_NONE};
   peers_args[peers_count] = (AsioArgs){.idx = peers_count, .info_hash = info_hash, .peer_id = peer_id};
   u32 idx = peers_count;
   peers_count++;
