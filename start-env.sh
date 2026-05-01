@@ -3,6 +3,8 @@
 set -euo pipefail
 
 # --- config ---------------------------------------------------------------
+TRACKER_IP="127.0.0.1"
+SEEDER_IP="127.0.0.1"
 TRACKER_HTTP_PORT=6969
 TRACKER_UDP_PORT=6969
 SEEDER_PORT=51413
@@ -29,10 +31,10 @@ cat >"$CHIHAYA_CFG" <<EOF
 chihaya:
   announce_interval: 30s
   min_announce_interval: 15s
-  metrics_addr: "127.0.0.1:6880"
+  metrics_addr: "0.0.0.0:6880"
 
   http:
-    addr: "127.0.0.1:${TRACKER_HTTP_PORT}"
+    addr: "0.0.0.0:${TRACKER_HTTP_PORT}"
     read_timeout: 5s
     write_timeout: 5s
     allow_ip_spoofing: true
@@ -46,7 +48,7 @@ chihaya:
       - "/scrape"
 
   udp:
-    addr: "127.0.0.1:${TRACKER_UDP_PORT}"
+    addr: "0.0.0.0:${TRACKER_UDP_PORT}"
     max_clock_skew: 10s
     private_key: "swirrent-test-env-private-key-change-me"
     allow_ip_spoofing: true
@@ -74,8 +76,8 @@ if [[ ! -f "$TORRENT" ]]; then
   echo "[+] creating torrent"
   transmission-create \
     -o "$TORRENT" \
-    -t "http://127.0.0.1:${TRACKER_HTTP_PORT}/announce" \
-    -t "udp://127.0.0.1:${TRACKER_UDP_PORT}/announce" \
+    -t "http://$TRACKER_IP:${TRACKER_HTTP_PORT}/announce" \
+    -t "udp://$TRACKER_IP:${TRACKER_UDP_PORT}/announce" \
     seed/test.bin >/dev/null
 fi
 
@@ -115,17 +117,17 @@ cat <<EOF
 ===========================================================
   Local BitTorrent test environment running
 -----------------------------------------------------------
-  tracker     : http://127.0.0.1:${TRACKER_HTTP_PORT}/announce
-                udp://127.0.0.1:${TRACKER_UDP_PORT}/announce
-  metrics     : http://127.0.0.1:6880/metrics
-  seeder peer : 127.0.0.1:${SEEDER_PORT}
+  tracker     : http://$TRACKER_IP:${TRACKER_HTTP_PORT}/announce
+                udp://$TRACKER_IP:${TRACKER_UDP_PORT}/announce
+  metrics     : http://$TRACKER_IP:6880/metrics
+  seeder peer : $SEEDER_IP:${SEEDER_PORT}
   torrent     : ${TORRENT}
   payload     : ${WORKDIR}/seed/test.bin
   logs        : ${WORKDIR}/logs/
 -----------------------------------------------------------
   try:
     ./swirrent ${TORRENT} -v
-    ./swirrent e.torrent --handshake 127.0.0.1:${SEEDER_PORT}
+    ./swirrent e.torrent --handshake $SEEDER_IP:${SEEDER_PORT}
 
   Ctrl-C to stop.
 ===========================================================
