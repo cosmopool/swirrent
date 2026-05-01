@@ -18,6 +18,7 @@
 #define PEER_ID_LENGTH 20
 
 #define MAX_PEERS 128
+#define MY_LISTENING_PORT 1337
 
 #define UNREACHABLE(msg)                                       \
   fprintf(stderr,                                              \
