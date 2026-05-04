@@ -57,7 +57,7 @@ void asioWaitForEvents() {
     u64 now = ts.tv_sec;
 
     // Run through connections looking for data to read
-    for (u32 i = 0; i <= num_pfds; i++) {
+    for (u32 i = 0; i < num_pfds; i++) {
       u32 fd = pfds[i].fd;
       bool is_empty_pfd = fd <= 0 && pfds[i].revents == 0 && pfds[i].events == 0;
       if (is_empty_pfd) continue;
