@@ -26,8 +26,13 @@ void asioFdUnset(i32 fd) {
   close(fd);
   for (u32 i = 0; i < num_pfds; i++) {
     if (pfds[i].fd != fd) continue;
-    pfds[i] = (struct pollfd){0};
-    pfds_ctx[i] = (AsioFd){0};
+    u32 last = num_pfds - 1;
+    // clear pfds
+    pfds[i] = pfds[last];
+    pfds[last] = (struct pollfd){0};
+    // clear pfds_ctx
+    pfds_ctx[i] = pfds_ctx[last];
+    pfds_ctx[last] = (AsioFd){0};
     num_pfds--;
     return;
   }
