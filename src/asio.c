@@ -16,7 +16,7 @@ static AsioFd pfds_ctx[MAX_FD] = {0};
 
 void asioFdSet(AsioFd asio) {
   ASSERT_VALID_FD(asio.fd);
-  pfds[num_pfds] = (struct pollfd){.fd = asio.fd, .events = POLLIN | POLLHUP};
+  pfds[num_pfds] = (struct pollfd){.fd = asio.fd, .events = asio.events};
   pfds_ctx[num_pfds] = asio;
   num_pfds++;
 }

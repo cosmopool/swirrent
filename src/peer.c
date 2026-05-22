@@ -1,3 +1,4 @@
+#include "metainfo.h"
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
@@ -29,10 +30,9 @@ static struct sockaddr_in peers_addr[MAX_FD] = {0};
 static AsioArgs peers_args[MAX_FD] = {0};
 static u8 peers_bitfield[(MAX_FD * MAX_PEERS) / 8] = {0};
 // static u8 mine_bitfield[(MAX_FD * MAX_PEERS) / 8] = {0};
-static u16 pieces_availability[(MAX_FD * MAX_PEERS) / 8] = {0};
+static u16 pieces_availability[1024 * 512] = {0};
 static u32 peers_count = 0;
-static u32 rarest_piece_availability = 0;
-static u32 rarest_piece_idx = (MAX_FD * MAX_PEERS) + 1;
+static PeerPieceRequest piece_request_queue[10] = {0};
 
 const char *peerMessageToString(PeerMessage msg) {
   switch (msg) {
@@ -63,7 +63,81 @@ void peerRemove(u32 fd, u32 idx) {
   asioFdUnset(fd);
 }
 
-void peerRead(u32 fd, u32 peer_idx, u8 *buff, u64 pieces_count) {
+u32 peerRarestPieceIndex(u64 pieces_count) {
+  u32 rarest_idx = 0;
+  for (u32 byte = 0; byte < pieces_count; byte++) {
+    for (u32 bit = 0; bit < 8; bit++) {
+      u32 piece_idx = (byte * 8) + bit;
+      if (pieces_availability[rarest_idx] < pieces_availability[piece_idx]) rarest_idx = piece_idx;
+    }
+  }
+  return rarest_idx;
+}
+
+void peerRequestPiece(u32 fd, u32 peer_idx, TorrentMetainfo *metainfo) {
+  if (peers_state[peer_idx].chocked) return;
+  u32 length_prefix = 0;
+  u32 offset = sizeof(length_prefix);
+  u8 buff[128] = {0};
+  buff[offset] = (u8)MESSAGE_REQUEST;
+  offset++;
+  u32 index = peerRarestPieceIndex(metainfo->info.pieces_count);
+  memcpy(buff + offset, (u8 *)&index, sizeof(index));
+  offset += sizeof(index);
+  u32 begin = htobe32((2 << 13) * index);
+  memcpy(buff + offset, (u8 *)&begin, sizeof(begin));
+  offset += sizeof(begin);
+  u32 length = htobe32(begin + (2 << 13));
+  if (length > metainfo->info.length) length = htobe32(metainfo->info.length - begin);
+  memcpy(buff + offset, (u8 *)&length, sizeof(length));
+  offset += sizeof(length);
+  u32 request_size = offset;
+  length_prefix = htobe32(request_size - sizeof(length_prefix));
+  memcpy(buff, (u8 *)&length_prefix, sizeof(length_prefix));
+  logInfo("(%d) sending piece request", peer_idx);
+  isize bytes_sent = 0;
+  if ((bytes_sent = send(fd, buff, request_size, 0)) < 0) {
+    peerRemove(fd, peer_idx);
+    return logError("(%d) failed to send piece request: %s", peer_idx, strerror(errno));
+  }
+  if ((usize)bytes_sent < request_size) {
+    peerRemove(fd, peer_idx);
+    return logError("(%d) failed to send whole piece request: %d out of %d sent", peer_idx, bytes_sent, request_size);
+  }
+  peers_state[peer_idx].status = STATUS_PIECE_REQUESTED;
+
+  for (u32 i = 0; i < request_size; i++) {
+    printf("%02X ", buff[i]);
+  }
+  printf("\n");
+}
+
+void peerUpdateInterestedState(u32 fd, u32 peer_idx, TorrentMetainfo *metainfo) {
+  u32 length_prefix = 0;
+  u8 message = MESSAGE_NOT_INTERESTED;
+  u8 buff[sizeof(length_prefix) + sizeof(message)] = {0};
+  length_prefix = htobe32(sizeof(buff) - sizeof(length_prefix));
+  memcpy(buff, (u8 *)&length_prefix, sizeof(length_prefix));
+  // TODO: actually implement a interested/not algorithm
+  message = MESSAGE_INTERESTED;
+  peers_state[peer_idx].interested = message == MESSAGE_INTERESTED;
+  // peers_state[peer_idx].status = STATUS_SENT_NOT_INTERESTED;
+  if (message == MESSAGE_NOT_INTERESTED) return;
+
+  buff[sizeof(length_prefix)] = message;
+  isize bytes_sent = 0;
+  if ((bytes_sent = send(fd, buff, sizeof(buff), 0)) < 0) {
+    peerRemove(fd, peer_idx);
+    return logError("(%d) failed to send piece request: %s", peer_idx, strerror(errno));
+  }
+  if ((usize)bytes_sent < sizeof(buff)) {
+    peerRemove(fd, peer_idx);
+    return logError("(%d) failed to send whole piece request: %d out of %d sent", peer_idx, bytes_sent, sizeof(buff));
+  }
+  peerRequestPiece(fd, peer_idx, metainfo);
+}
+
+void peerRead(u32 fd, u32 peer_idx, u8 *buff, u64 pieces_count, TorrentMetainfo *metainfo) {
   u32 msg_offset = 0;
   u32 length = (buff[0] << 24) | (buff[1] << 16) | (buff[2] << 8) | buff[3];
   // u32 prefix = 0;
@@ -74,8 +148,15 @@ void peerRead(u32 fd, u32 peer_idx, u8 *buff, u64 pieces_count) {
   msg_offset++;
   logInfo("(%d) message length: %d, type: %s", peer_idx, length, peerMessageToString(message));
   switch (message) {
-  case MESSAGE_CHOKE: return logInfo("choke");
-  case MESSAGE_UNCHOKE: return logInfo("unchoke");
+  case MESSAGE_CHOKE:
+    peers_state[peer_idx].chocked = true;
+    return logInfo("choke");
+
+  case MESSAGE_UNCHOKE:
+    logInfo("unchoke");
+    peers_state[peer_idx].chocked = false;
+    return peerUpdateInterestedState(fd, peer_idx, metainfo);
+
   case MESSAGE_INTERESTED: return logInfo("interested");
   case MESSAGE_NOT_INTERESTED: return logInfo("not interested");
   case MESSAGE_HAVE: return logInfo("have");
@@ -88,12 +169,12 @@ void peerRead(u32 fd, u32 peer_idx, u8 *buff, u64 pieces_count) {
       for (u32 bit = 0; bit < 8; bit++) {
         u32 piece_idx = (byte * 8) + bit;
         pieces_availability[piece_idx]++;
-        if (rarest_piece_availability >= pieces_availability[piece_idx]) continue;
-        rarest_piece_idx = piece_idx;
-        rarest_piece_availability = pieces_availability[piece_idx];
+        if ((byte & (1 << bit)) != 0) pieces_availability[piece_idx]++;
       }
     }
-    break;
+    peerUpdateInterestedState(fd, peer_idx, metainfo);
+    return;
+
   case MESSAGE_REQUEST: return logInfo("request");
   case MESSAGE_PIECE: return logInfo("piece");
   case MESSAGE_CANCEL: return logInfo("cancel");
@@ -111,7 +192,7 @@ void peerListen(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMetainfo *
   }
   logInfo("(%d) finished reading message: %d bytes", idx, bytes_read);
   if (bytes_read == 0) return logInfo("keepalive message from peer %d", idx);
-  return peerRead(fd, idx, buff, metainfo->info.pieces_count);
+  return peerRead(fd, idx, buff, metainfo->info.pieces_count, metainfo);
 }
 
 void peerHandshakeGenerate(u8 *info_hash, u8 *peer_id, char handshake_buff[68]) {
@@ -163,7 +244,7 @@ void peerHandshakeSend(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMet
     peerRemove(fd, idx);
     return logError("(%d) failed to send whole handshake data: %s", idx, bytes_sent);
   }
-  peers_state[idx].conn_status = CONN_SENT;
+  peers_state[idx].status = STATUS_CONNECTION_INITATED;
 }
 
 void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMetainfo *metainfo) {
@@ -200,11 +281,11 @@ void peerHandshakeRead(u32 fd, u32 idx, struct sockaddr_in peer_addr, TorrentMet
   hexdump("%02x", hr.info_hash, SHA_DIGEST_LENGTH, false);
   printf("(%d)   peer id: ", idx);
   hexdump("%02x", hr.peer_id, PEER_ID_LENGTH, false);
-  peers_state[idx].conn_status = CONN_CONNECTED;
+  peers_state[idx].status = STATUS_CONNECTED;
   if (bytes_read <= 68) return;
   printf("(%d) full response dump: \n", idx);
   hexdump("%02X ", buff, bytes_read, true);
-  return peerRead(fd, idx, buff + offset, metainfo->info.pieces_count);
+  return peerRead(fd, idx, buff + offset, metainfo->info.pieces_count, metainfo);
 }
 
 void peerResolveState(i32 fd, u64 now, ASIO_STATUS status, void *args) {
@@ -214,10 +295,13 @@ void peerResolveState(i32 fd, u64 now, ASIO_STATUS status, void *args) {
   AsioArgs *a = args;
   PeerState state = peers_state[a->peer_idx];
   struct sockaddr_in addr = peers_addr[a->peer_idx];
-  switch (state.conn_status) {
-  case CONN_NONE: return peerHandshakeSend(fd, a->peer_idx, addr, a->metainfo, a->peer_id);
-  case CONN_SENT: return peerHandshakeRead(fd, a->peer_idx, addr, a->metainfo);
-  case CONN_CONNECTED: return peerListen(fd, a->peer_idx, addr, a->metainfo);
+  switch (state.status) {
+  case STATUS_NONE: return peerHandshakeSend(fd, a->peer_idx, addr, a->metainfo, a->peer_id);
+  case STATUS_CONNECTION_INITATED: return peerHandshakeRead(fd, a->peer_idx, addr, a->metainfo);
+  case STATUS_CONNECTED: return peerListen(fd, a->peer_idx, addr, a->metainfo);
+  case STATUS_PIECE_REQUESTED: return peerListen(fd, a->peer_idx, addr, a->metainfo);
+  case STATUS_SENT_INTERESTED: return;
+  case STATUS_SENT_NOT_INTERESTED: return;
   }
 }
 
@@ -258,11 +342,16 @@ void peerAdd(u8 *ip, u16 port, usize len, TorrentMetainfo *metainfo, u8 *peer_id
   }
   logInfo("(%d) ip: %s\t | port: %d", peers_count, buf, be16toh(addr.sin_port));
   peers_addr[peers_count] = addr;
-  peers_state[peers_count] = (PeerState){.our_status = STATUS_NONE, .their_status = STATUS_NONE};
+  peers_state[peers_count] = (PeerState){.chocked = true};
   peers_args[peers_count] = (AsioArgs){.peer_idx = peers_count, .metainfo = metainfo, .peer_id = peer_id};
   u32 idx = peers_count;
   peers_count++;
-  asioFdSet((AsioFd){.fd = fd, .args = peers_args + idx, .on_ready_callback = peerResolveState});
+  asioFdSet((AsioFd){
+      .fd = fd,
+      .args = peers_args + idx,
+      .on_ready_callback = peerResolveState,
+      .events = ASIOIN | ASIOOUT | ASIOHUP,
+  });
   peerResolveState(fd, ts.tv_sec, ASIO_NONE, peers_args + idx);
 }
 

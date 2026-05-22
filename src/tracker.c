@@ -390,6 +390,7 @@ u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMeta
         .args = &asio_args,
         .on_ready_callback = trackerStateResolver,
         .has_timeout_expired_callback = trackerHasTimeoutExpired,
+        .events = ASIOIN | ASIOHUP,
     });
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) < 0) {

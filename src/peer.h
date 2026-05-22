@@ -12,17 +12,12 @@
 #include "metainfo.h"
 
 typedef enum : u8 {
-  CONN_NONE,
-  CONN_SENT,
-  CONN_CONNECTED,
-} PeerConn;
-
-typedef enum : u8 {
-  STATUS_CHOKED,
-  STATUS_UNCHOKED,
-  STATUS_INTERESTED,
-  STATUS_NOT_INTERESTED,
   STATUS_NONE,
+  STATUS_CONNECTION_INITATED,
+  STATUS_CONNECTED,
+  STATUS_SENT_INTERESTED,
+  STATUS_SENT_NOT_INTERESTED,
+  STATUS_PIECE_REQUESTED,
 } PeerStatus;
 
 typedef enum : u8 {
@@ -38,10 +33,15 @@ typedef enum : u8 {
 } PeerMessage;
 
 typedef struct {
-  PeerStatus their_status;
-  PeerStatus our_status;
-  PeerConn conn_status;
+  PeerStatus status;
+  bool chocked;
+  bool interested;
 } PeerState;
+
+typedef struct {
+  u32 peer_idx;
+  u32 piece_idx;
+} PeerPieceRequest;
 
 typedef struct {
   u8 length;
