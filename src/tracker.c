@@ -30,7 +30,6 @@ typedef struct {
   add_peer_callback add_callback;
 } AsioArgs;
 
-static TrackerState trackers[MAX_FD] = {0};
 static i32 fd_to_tracker_idx[MAX_FD] = {0};
 
 TrackerState *trackerStateFromFd(i32 fd) {
@@ -332,24 +331,17 @@ void trackerStateResolver(i32 fd, u64 now, ASIO_STATUS asio_status, void *asio_a
   freeTrackerState(tracker);
 }
 
-u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback) {
-  u32 result = 0;
-  // CURL *curl = curl_easy_init();
-  // if (!curl) {
-  //   curl_easy_cleanup(curl);
-  //   curl_global_cleanup();
-  //   return 1;
-  // }
-
-  AsioArgs asio_args = {.metainfo = metainfo, .peer_id = peer_id, .add_callback = add_callback};
+u32 trackerResolveAddresses(String *trackers_url, usize trackers_count, u8 peer_id[PEER_ID_LENGTH], TrackerState out[MAX_TRACKERS]) {
+  TrackerState *trackers = out;
   isize remaining = 0;
-  for (u32 j = 0; j < trackers_count; j++) {
-    String url = trackers_url[j];
-    logInfo("\n===| tracker (%d) url: %.*s", j, (u32)url.len, url.data);
+
+  for (u32 i = 0; i < trackers_count; i++) {
+    String url = trackers_url[i];
+    logInfo("\n===| tracker (%d) url: %.*s", i, (u32)url.len, url.data);
     bool is_udp = url.data[0] == 'u' && url.data[1] == 'd' && url.data[2] == 'p';
     if (!is_udp) continue;
     remaining++;
-    ThreadJob job = {.tracker_id = j, .args = trackers_url + j, .callback = trackerResolveAddress};
+    ThreadJob job = {.tracker_id = i, .args = trackers_url + i, .callback = trackerResolveAddress};
     threadsJobEnqueue(job);
   }
 
@@ -378,13 +370,29 @@ u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMeta
     trackers[job.tracker_id].addr = job.results;
     trackers[job.tracker_id].action = ACTION_NONE;
     trackers[job.tracker_id].url = trackers_url[job.tracker_id];
-    logInfo("[TRACKER] opening sock for tracker %d", job.tracker_id);
-    i32 fd = trackerSockOpen(trackers + job.tracker_id);
+  }
+
+  return 0;
+}
+
+u32 trackerPeerListFetch(TrackerState trackers[], usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH]) {
+  u32 result = 0;
+  // CURL *curl = curl_easy_init();
+  // if (!curl) {
+  //   curl_easy_cleanup(curl);
+  //   curl_global_cleanup();
+  //   return 1;
+  // }
+
+  AsioArgs asio_args = {.metainfo = metainfo, .peer_id = peer_id, .add_callback = NULL};
+  for (u32 i = 0; i < trackers_count; i++) {
+    logInfo("[TRACKER] opening sock for tracker %d", i);
+    i32 fd = trackerSockOpen(trackers + i);
     if (fd < 0) {
-      freeTrackerState(trackers + job.tracker_id);
+      freeTrackerState(trackers + i);
       continue;
     }
-    fd_to_tracker_idx[fd] = job.tracker_id;
+    fd_to_tracker_idx[fd] = i;
     asioFdSet((AsioFd){
         .fd = fd,
         .args = &asio_args,

@@ -127,8 +127,16 @@ i32 swirrentMain(SwirrentContext *ctx) {
   } else {
     logInfo("no dump response. starting fresh.");
     logInfo("fetching peer list from (%lu) trackers", ctx->metainfo->trackers_count);
+    TrackerState trackers[ctx->metainfo->trackers_count];
+    memset(trackers, 0, ctx->metainfo->trackers_count);
+    int result = trackerResolveAddresses(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, peer_id, trackers);
+    logInfo("finish resolving tracker addresses, result: %d", result);
+    if (result != 0) return result;
     // no raw request was load, so we will talk to trackers for peers
-    i32 result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo, peer_id, peerAddMany);
+    u8 peers[MAX_PEERS] = {0};
+    usize peer_len = 0;
+    usize count = 0;
+    result = trackerPeerListFetch(ctx->metainfo->trackers_url, ctx->metainfo->trackers_count, ctx->metainfo, peer_id, peerAddMany);
     logInfo("finish fetching peer list, result: %d", result);
     if (result != 0) return result;
   }

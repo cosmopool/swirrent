@@ -129,4 +129,5 @@ typedef struct {
 
 typedef void (*add_peer_callback)(u8 *peers, usize peer_size, usize peers_count, TorrentMetainfo *metainfo, u8 *peer_id);
 
-u32 trackerPeerListFetch(String *trackers_url, usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH], add_peer_callback add_callback);
+u32 trackerResolveAddresses(String *trackers_url, usize trackers_count, u8 peer_id[PEER_ID_LENGTH], TrackerState trackers_ip[MAX_TRACKERS]);
+u32 trackerPeerListFetch(TrackerState tracker[], usize trackers_count, TorrentMetainfo *metainfo, u8 peer_id[PEER_ID_LENGTH]);
